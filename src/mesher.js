@@ -10,7 +10,7 @@
 //   uint8  normal       face index 0-5, 6 = plant (lit as if facing up)
 //   uint8  temp, humid  biome climate for grass/foliage tinting
 import { CHUNK_SIZE, CHUNK_HEIGHT } from './constants.js';
-import { B, BLOCKS, IS_OPAQUE, IS_SOLID } from './blocks.js';
+import { B, BLOCKS, ITEMS, IS_OPAQUE, IS_SOLID, isBlockItem } from './blocks.js';
 import { generateTextures } from './textures.js';
 
 export const VERTEX_BYTES = 16;
@@ -481,4 +481,40 @@ export function buildSpriteMesh(layer) {
     }
   }
   return { data: mb.result(), quads: mb.quads };
+}
+
+// The texture layer name that shows an item as a flat sprite.
+export function itemSpriteName(id) {
+  if (isBlockItem(id)) return BLOCKS[id].itemTexture || BLOCKS[id].faces[0];
+  return `item_${ITEMS.get(id).name}`;
+}
+
+// An item sprite with real thickness (one pixel), like held and dropped
+// items: front and back faces cut out by the alpha test, plus a side face for
+// every pixel edge that borders transparency. UVs are in half texels so the
+// sides can sample pixel centres; draw with uUVScale = 1/32.
+export function buildExtrudedSprite(name) {
+  const tex = generateTextures();
+  const layer = tex.index.get(name);
+  const px = tex.pixels.subarray(layer * 1024, layer * 1024 + 1024);
+  const solidAt = (x, y) => x >= 0 && y >= 0 && x < 16 && y < 16 && px[(y * 16 + x) * 4 + 3] >= 128;
+  const mb = new MeshBuilder(256);
+  const z0 = 7, z1 = 8;
+  const quad = (verts, u, v, normal) => {
+    for (const [x, y, z, uu = u, vv = v] of verts) mb.vertex(x, y, z, uu, vv, layer, 240, 0, 255, 0, normal);
+  };
+  quad([[0, 0, z1, 0, 32], [16, 0, z1, 32, 32], [16, 16, z1, 32, 0], [0, 16, z1, 0, 0]], 0, 0, 4);
+  quad([[16, 0, z0, 32, 32], [0, 0, z0, 0, 32], [0, 16, z0, 0, 0], [16, 16, z0, 32, 0]], 0, 0, 5);
+  for (let py = 0; py < 16; py++) {
+    for (let x = 0; x < 16; x++) {
+      if (!solidAt(x, py)) continue;
+      const y0 = 15 - py, y1 = 16 - py;
+      const u = x * 2 + 1, v = py * 2 + 1;
+      if (!solidAt(x - 1, py)) quad([[x, y0, z0], [x, y0, z1], [x, y1, z1], [x, y1, z0]], u, v, 1);
+      if (!solidAt(x + 1, py)) quad([[x + 1, y0, z1], [x + 1, y0, z0], [x + 1, y1, z0], [x + 1, y1, z1]], u, v, 0);
+      if (!solidAt(x, py - 1)) quad([[x, y1, z1], [x + 1, y1, z1], [x + 1, y1, z0], [x, y1, z0]], u, v, 2);
+      if (!solidAt(x, py + 1)) quad([[x, y0, z0], [x + 1, y0, z0], [x + 1, y0, z1], [x, y0, z1]], u, v, 3);
+    }
+  }
+  return { data: mb.result(), quads: mb.quads, uvScale: 1 / 32 };
 }

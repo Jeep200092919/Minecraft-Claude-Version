@@ -2,6 +2,7 @@
 // isometric cubes for blocks, flat sprites for plants/items, plus HUD hearts.
 import { BLOCKS, ITEMS, isBlockItem, FACE_PX, FACE_PY, FACE_PZ } from './blocks.js';
 import { generateTextures, tilePixels, TILE, TINT_GRASS, TINT_FOLIAGE } from './textures.js';
+import { GLYPHS } from './font.js';
 
 const GRASS_TINT = [0.56, 0.74, 0.35];
 const FOLIAGE_TINT = [0.45, 0.66, 0.19];
@@ -153,4 +154,78 @@ export function dirtBackground() {
 
 export function textureDataURL(name, shade = 1) {
   return tileCanvas(name, shade).toDataURL();
+}
+
+// The title logo: pixel-font letters built from stone blocks with a 3D
+// extrusion, like the classic block-letter logo.
+export function logoDataURL(text, px = 7) {
+  // Bold letters: every pixel also fills the one to its right.
+  const rows = [...text].map((ch) => (GLYPHS[ch] || GLYPHS[' ']).map((r) => {
+    let out = '';
+    for (let x = 0; x <= r.length; x++) out += r[x] === '#' || r[x - 1] === '#' ? '#' : '.';
+    return out;
+  }));
+  const widths = rows.map((g) => Math.max(...g.map((r) => r.length)));
+  const cols = widths.reduce((a, w) => a + w + 1, -1);
+  const depth = Math.round(px * 1.5);
+  const W = cols * px + depth + 4, H = 7 * px + depth + 4;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  // Font-pixel mask.
+  const mask = [];
+  let ox = 0;
+  rows.forEach((g, i) => {
+    g.forEach((row, y) => {
+      if (y > 6) return;
+      for (let x = 0; x < row.length; x++) if (row[x] === '#') mask.push([ox + x, y]);
+    });
+    ox += widths[i] + 1;
+  });
+  const on = new Set(mask.map(([x, y]) => `${x},${y}`));
+  const has = (x, y) => on.has(`${x},${y}`);
+  // Extrusion: darker copies shifted down and right.
+  for (let d = depth; d >= 1; d--) {
+    const shade = Math.round(40 + (depth - d) * 3);
+    ctx.fillStyle = `rgb(${shade},${shade},${shade + 4})`;
+    for (const [x, y] of mask) ctx.fillRect(2 + x * px + Math.round(d * 0.35), 2 + y * px + d, px, px);
+  }
+  // Stone-textured faces with a light top edge and a dark bottom edge.
+  const stone = tilePixels(generateTextures(), 'stone');
+  const img = ctx.getImageData(0, 0, W, H);
+  for (const [fx, fy] of mask) {
+    for (let j = 0; j < px; j++) {
+      for (let i = 0; i < px; i++) {
+        const X = 2 + fx * px + i, Y = 2 + fy * px + j;
+        const t = ((Y % 16) * 16 + (X % 16)) * 4;
+        let s = 1.12;
+        if (j < 2 && !has(fx, fy - 1)) s = 1.5;
+        else if (i < 2 && !has(fx - 1, fy)) s = 1.3;
+        else if (j >= px - 2 && !has(fx, fy + 1)) s = 0.75;
+        else if (i >= px - 2 && !has(fx + 1, fy)) s = 0.85;
+        const o = (Y * W + X) * 4;
+        img.data[o] = Math.min(255, stone[t] * s);
+        img.data[o + 1] = Math.min(255, stone[t + 1] * s);
+        img.data[o + 2] = Math.min(255, stone[t + 2] * s);
+        img.data[o + 3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return { url: c.toDataURL(), width: W, height: H };
+}
+
+// Stone-grey noise for buttons, like the classic menu buttons.
+export function buttonTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 16;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(16, 16);
+  const stone = tilePixels(generateTextures(), 'stone');
+  for (let i = 0; i < 256; i++) {
+    const v = 70 + (stone[i * 4] - 122) * 0.5;
+    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c.toDataURL();
 }

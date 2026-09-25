@@ -2,6 +2,7 @@
 // noise so the game ships with zero image assets. Pure JS (no DOM), so the
 // output can also be inspected in tests.
 import { mulberry32, hashString } from './noise.js';
+import { toolArt, stickArt } from './itemart.js';
 
 export const TILE = 16;
 const N = TILE * TILE * 4;
@@ -118,16 +119,28 @@ function snow(t, rng) {
 }
 
 function cobblestone(t, rng) {
-  const pts = Array.from({ length: 11 }, () => [rng() * 16, rng() * 16, 95 + rng() * 55]);
-  const wrap = (d) => Math.min(Math.abs(d), 16 - Math.abs(d));
+  // Rounded stones on a jittered 3x3 grid, lit from the top left, set in
+  // dark mortar.
+  const wrap = (d) => (d > 8 ? d - 16 : d < -8 ? d + 16 : d);
+  // Irregular stones: random centres kept a few pixels apart (tileable).
+  const pts = [];
+  for (let tries = 0; pts.length < 12 && tries < 400; tries++) {
+    const p = [rng() * 16, rng() * 16, 100 + rng() * 50];
+    if (pts.every((q) => Math.hypot(wrap(p[0] - q[0]), wrap(p[1] - q[1])) > 3.6)) pts.push(p);
+  }
   t.fill((x, y) => {
-    let d1 = 1e9, d2 = 1e9, cell = 0;
+    let d1 = 1e9, d2 = 1e9, best = null;
     for (const p of pts) {
-      const d = Math.hypot(wrap(x + 0.5 - p[0]), wrap(y + 0.5 - p[1]));
-      if (d < d1) { d2 = d1; d1 = d; cell = p[2]; } else if (d < d2) d2 = d;
+      const dx = wrap(x + 0.5 - p[0]), dy = wrap(y + 0.5 - p[1]);
+      const d = Math.hypot(dx, dy);
+      if (d < d1) { d2 = d1; d1 = d; best = [p, dx, dy]; } else if (d < d2) d2 = d;
     }
-    if (d2 - d1 < 1.1) t.set(x, y, add([72, 72, 72], (rng() - 0.5) * 12));
-    else t.set(x, y, add([cell, cell, cell], -d1 * 5 + (rng() - 0.5) * 14));
+    const edge = d2 - d1;
+    if (edge < 0.75) { t.set(x, y, add([62, 62, 62], (rng() - 0.5) * 10)); return; }
+    const [p, dx, dy] = best;
+    let v = p[2] - (dx + dy) * 4.5 + (rng() - 0.5) * 12;
+    if (edge < 1.8) v -= 16;
+    t.set(x, y, [v, v, v]);
   });
 }
 
@@ -248,15 +261,30 @@ function lava(t, rng) {
 
 function ore(t, rng, color, dark) {
   stone(t, rng);
-  const clusters = 4 + Math.floor(rng() * 2);
-  for (let i = 0; i < clusters; i++) {
-    let x = 2 + Math.floor(rng() * 12), y = 2 + Math.floor(rng() * 12);
-    const n = 3 + Math.floor(rng() * 4);
-    for (let k = 0; k < n; k++) {
-      t.set(x, y, rng() < 0.35 ? dark : add(color, (rng() - 0.5) * 16));
-      if (rng() < 0.5) x += rng() < 0.5 ? 1 : -1; else y += rng() < 0.5 ? 1 : -1;
-      x = Math.max(1, Math.min(14, x)); y = Math.max(1, Math.min(14, y));
-    }
+  // Mineral nuggets: small blobs shaded light at the top left and dark at the
+  // bottom right, each casting a little shadow on the stone.
+  const shapes = [['.#', '##'], ['##', '##'], ['.##', '###', '.#.'], ['##.', '.##'], ['#.', '##', '.#'], ['###', '##.']];
+  const light = add(color, 40);
+  const centres = [[2, 2], [9, 1], [5, 6], [12, 6], [1, 10], [8, 10], [12, 13], [4, 13]];
+  const start = Math.floor(rng() * centres.length);
+  const n = 6 + Math.floor(rng() * 2);
+  for (let i = 0; i < n; i++) {
+    const shape = shapes[Math.floor(rng() * shapes.length)];
+    const [cx, cy] = centres[(start + i) % centres.length];
+    const ox = cx + Math.floor(rng() * 2), oy = cy + Math.floor(rng() * 2);
+    const on = (x, y) => shape[y]?.[x] === '#';
+    shape.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        if (!on(x, y)) continue;
+        const topLeft = !on(x - 1, y) && !on(x, y - 1);
+        const bottomRight = !on(x + 1, y) && !on(x, y + 1);
+        t.set(ox + x, oy + y, topLeft ? light : bottomRight ? dark : add(color, (rng() - 0.5) * 12));
+        if (!on(x + 1, y + 1) && !on(x, y + 1)) {
+          const px = ox + x + 1, py = oy + y + 1;
+          if (px < 16 && py < 16) t.set(px, py, scale(t.get(px, py), 0.75));
+        }
+      }
+    });
   }
 }
 
@@ -393,10 +421,21 @@ function bookshelf(t, rng) {
 }
 
 function glowstone(t, rng) {
-  const vn = valueNoise(rng, 4);
+  // Glowing crystal chunks separated by darker amber cracks.
+  const pts = Array.from({ length: 14 }, () => [rng() * 16, rng() * 16, rng()]);
+  const wrap = (d) => Math.min(Math.abs(d), 16 - Math.abs(d));
+  const tones = [[255, 244, 190], [252, 222, 130], [240, 188, 96], [218, 156, 70]];
   t.fill((x, y) => {
-    const v = vn(x, y) + (rng() - 0.5) * 0.3;
-    t.set(x, y, v > 0.6 ? [255, 236, 170] : v > 0.4 ? [246, 200, 110] : v > 0.25 ? [196, 146, 78] : [140, 100, 56]);
+    let d1 = 1e9, d2 = 1e9, cell = 0;
+    for (const p of pts) {
+      const d = Math.hypot(wrap(x + 0.5 - p[0]), wrap(y + 0.5 - p[1]));
+      if (d < d1) { d2 = d1; d1 = d; cell = p[2]; } else if (d < d2) d2 = d;
+    }
+    if (d2 - d1 < 0.8) t.set(x, y, add([150, 100, 44], (rng() - 0.5) * 20));
+    else {
+      const c = tones[Math.min(3, Math.floor(cell * 3 + d1 * 0.35))];
+      t.set(x, y, add(c, (rng() - 0.5) * 14));
+    }
   });
 }
 
@@ -697,7 +736,8 @@ function mossyCobblestone(t, rng) {
   cobblestone(t, rng);
   const vn = valueNoise(rng, 8);
   t.fill((x, y) => {
-    if (vn(x, y) + rng() * 0.25 > 0.72) t.set(x, y, add([86, 118, 52], (rng() - 0.5) * 24));
+    const c = t.get(x, y);
+    if (c[0] > 70 && vn(x, y) + rng() * 0.3 > 0.78) t.set(x, y, add([86, 118, 52], (rng() - 0.5) * 24));
   });
 }
 
@@ -1034,6 +1074,12 @@ for (const tier of Object.keys(TIER_COLORS)) {
   GENERATORS[`item_${tier}_sword`] = (t) => swordSprite(t, tier);
   GENERATORS[`item_${tier}_hoe`] = (t) => hoeSprite(t, tier);
 }
+
+// Hand-tuned item art (itemart.js) replaces the older procedural sprites.
+for (const tier of ['wooden', 'stone', 'iron', 'diamond']) {
+  for (const kind of ['pickaxe', 'axe', 'shovel', 'hoe', 'sword']) GENERATORS[`item_${tier}_${kind}`] = toolArt(kind, tier);
+}
+GENERATORS.item_stick = stickArt;
 
 // For transparent pixels, copy the average opaque colour so mipmapping does
 // not produce dark fringes around cut-out textures.

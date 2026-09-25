@@ -4,9 +4,9 @@
 //    light shafts, ACES tonemapping and color grading;
 //  - "vanilla" (shaders off): the classic look, rendered straight to screen.
 import { CHUNK_SIZE } from './constants.js';
-import { BLOCKS, ITEMS, isBlockItem } from './blocks.js';
+import { BLOCKS, isBlockItem } from './blocks.js';
 import { generateTextures } from './textures.js';
-import { VERTEX_BYTES, buildBlockMesh, buildOverlayCube, buildSpriteMesh, textureLayer } from './mesher.js';
+import { VERTEX_BYTES, buildBlockMesh, buildOverlayCube, buildExtrudedSprite, itemSpriteName, textureLayer } from './mesher.js';
 import {
   mat4, perspective, multiply, viewRotation, cameraBasis, frustumPlanes, aabbInFrustum,
   compose, translation, rotationX, rotationY, rotationZ, scaling, ortho, lookRotation, transformPoint,
@@ -989,13 +989,11 @@ export class Renderer {
         built = buildOverlayCube(textureLayer('skin'), [0, 0, 0, 4, 12, 4]);
       } else if (isBlockItem(itemId) && BLOCKS[itemId].heldAsBlock) {
         built = buildBlockMesh(itemId);
-      } else if (isBlockItem(itemId)) {
-        built = buildSpriteMesh(textureLayer(BLOCKS[itemId].itemTexture || BLOCKS[itemId].faces[0]));
       } else {
-        built = buildSpriteMesh(textureLayer(`item_${ITEMS.get(itemId).name}`));
+        built = buildExtrudedSprite(itemSpriteName(itemId));
       }
-      const kind = !itemId ? 'hand' : built.quads > 2 ? 'block' : 'flat';
-      this.heldCache.set(key, { mesh: this.createMesh(built.data, built.quads), kind });
+      const kind = !itemId ? 'hand' : built.uvScale ? 'flat' : 'block';
+      this.heldCache.set(key, { mesh: this.createMesh(built.data, built.quads), kind, uvScale: built.uvScale || 1 / 16 });
     }
     return this.heldCache.get(key);
   }
@@ -1027,11 +1025,11 @@ export class Renderer {
       );
     } else {
       model = compose(
-        translation(0.52 + bobX - s * 0.18 - eat * 0.35, -0.42 + bobY + s * 0.12 - place * 0.12 + eat * 0.12 - eatBob, -0.72 - s * 0.2),
+        translation(0.56 + bobX - s * 0.18 - eat * 0.35, -0.44 + bobY + s * 0.12 - place * 0.12 + eat * 0.12 - eatBob, -0.86 - s * 0.2),
         rotationX(s * -1.0),
         rotationY(-Math.PI / 2 + 0.35 + eat * 0.9),
         rotationZ(0.35),
-        scaling(0.5),
+        scaling(0.42),
         translation(-0.5, -0.5, -0.5),
       );
     }
@@ -1048,8 +1046,9 @@ export class Renderer {
     gl.uniform1f(u.uAlphaMul, 1);
     gl.uniform1f(u.uLeafWave, 0);
     if (fancy) {
-      // Light the hand from a fixed direction in view space.
-      gl.uniform3f(u.uLightDir, 0.35, 0.8, 0.5);
+      // Light the hand from a fixed direction in view space (above, left and
+      // in front, so the face of a held sprite is lit).
+      gl.uniform3f(u.uLightDir, -0.45, 0.75, 0.5);
       gl.uniform1f(u.uShadowsOn, 0);
     } else {
       gl.uniform3fv(u.uSkyLight, sky.vanilla.skyLight);
@@ -1058,8 +1057,10 @@ export class Renderer {
     gl.uniform3f(u.uLightOverride, sl / 15, bl / 15, 1);
     gl.disable(gl.CULL_FACE);
     this.bindBlockTexture(0);
+    gl.uniform1f(u.uUVScale, held.uvScale);
     gl.bindVertexArray(held.mesh.vao);
     gl.drawElements(gl.TRIANGLES, held.mesh.count, gl.UNSIGNED_INT, 0);
+    gl.uniform1f(u.uUVScale, 1 / 16);
     gl.enable(gl.CULL_FACE);
     gl.uniform3f(u.uLightOverride, 0, 0, 0);
     gl.uniformMatrix4fv(u.uModel, false, this.identity);

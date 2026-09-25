@@ -1,7 +1,7 @@
 // DOM user interface: menus, HUD, inventory and crafting screens.
 import { ITEMS, CREATIVE_ITEMS, SMELTING, SMELT_TIME, fuelTime } from './blocks.js';
 import { clickSlot, matchRecipe, consumeCraftingGrid, maxStack, stack } from './inventory.js';
-import { itemIcon, hudIcons, dirtBackground, textureDataURL } from './icons.js';
+import { itemIcon, hudIcons, dirtBackground, logoDataURL, buttonTexture } from './icons.js';
 import { MAX_HEALTH, MAX_AIR, MAX_HUNGER } from './player.js';
 
 const $ = (id) => document.getElementById(id);
@@ -23,8 +23,10 @@ export class UI {
     const dirt = `url(${dirtBackground()})`;
     document.querySelectorAll('.screen.dirt').forEach((el) => (el.style.backgroundImage = dirt));
     const logo = document.querySelector('.logo');
-    logo.style.backgroundImage = `url(${textureDataURL('stone', 1.2)})`;
-    logo.style.backgroundColor = '#9a9a9a';
+    const art = logoDataURL('CLAUDECRAFT');
+    logo.style.backgroundImage = `url(${art.url})`;
+    logo.style.aspectRatio = `${art.width} / ${art.height}`;
+    document.documentElement.style.setProperty('--button-tex', `url(${buttonTexture()})`);
 
     this.buildHotbar();
     this.bindButtons();
