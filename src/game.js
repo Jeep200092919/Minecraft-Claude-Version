@@ -1500,6 +1500,19 @@ export class Game {
 
   // Simple water flow into a freshly opened cell: falls freely and spreads a
   // few blocks sideways across solid floors.
+  // Water touching lava turns the lava into obsidian.
+  quenchLava(x, y, z) {
+    const w = this.world;
+    const sides = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    for (const [a, b, c] of [[x, y, z], ...sides.map(([dx, dy, dz]) => [x + dx, y + dy, z + dz])]) {
+      if (w.getBlock(a, b, c) !== B.LAVA) continue;
+      if (!sides.some(([dx, dy, dz]) => w.getBlock(a + dx, b + dy, c + dz) === B.WATER)) continue;
+      this.setBlockSynced(a, b, c, B.OBSIDIAN);
+      this.particles.smoke(a + 0.5, b + 1, c + 0.5, 6, 0.4, 0.15, 0.3);
+      this.sound.hiss();
+    }
+  }
+
   flowWater(x, y, z) {
     const w = this.world;
     const isWater = (a, b, c) => w.getBlock(a, b, c) === B.WATER;
@@ -1518,6 +1531,7 @@ export class Game {
       const cur = w.getBlock(qx, qy, qz);
       if (cur !== B.AIR && !(BLOCKS[cur].replaceable && !BLOCKS[cur].liquid)) continue;
       if (!this.setBlockSynced(qx, qy, qz, B.WATER)) continue;
+      this.quenchLava(qx, qy, qz);
       budget--;
       const below = w.getBlock(qx, qy - 1, qz);
       if (BLOCKS[below].replaceable && !BLOCKS[below].liquid) {

@@ -176,6 +176,7 @@ function useBucket(game, it) {
     return true;
   }
   game.setBlockSynced(x, y, z, it.bucket);
+  game.quenchLava(x, y, z);
   if (it.bucket === B.WATER) game.flowWater(x, y - 1, z);
   if (!game.creative) inv.slots[inv.selected] = { id: I.BUCKET, count: 1 };
   game.sound.splash();
