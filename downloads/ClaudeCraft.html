@@ -502,6 +502,38 @@ input:not([type]):focus { border-color: #fff; }
   background: radial-gradient(ellipse at center, rgba(150, 60, 230, 0.35), rgba(90, 10, 170, 0.9));
 }
 
+/* --- Shader packs ------------------------------------------------------------ */
+.packs { display: flex; gap: 14px; width: min(1060px, 94vw); height: min(52vh, 460px); }
+.pack-side { display: flex; flex-direction: column; gap: 8px; width: 260px; }
+#pack-list { flex: 1; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: rgba(0, 0, 0, 0.55); border: 2px solid #000; }
+#pack-list li { padding: 5px 8px; cursor: pointer; font-family: var(--ui-font); font-size: 16px; color: #ddd; }
+#pack-list li:hover { background: rgba(255, 255, 255, 0.12); }
+#pack-list li.selected { outline: 2px solid #fff; color: #fff; }
+#pack-list li.active::before { content: '▶ '; color: #7f7; }
+.pack-main { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pack-main label { display: flex; gap: 8px; align-items: center; }
+.pack-main label input { flex: 1; }
+#pack-source {
+  flex: 1; resize: none; padding: 8px; background: #111; color: #e8e8e8; border: 2px solid #000;
+  font: 13px/1.45 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; tab-size: 2; white-space: pre;
+}
+#pack-status { white-space: pre-wrap; max-height: 5.5em; overflow-y: auto; max-width: none; font-size: 14px; }
+
+/* --- Server list --------------------------------------------------------------- */
+.menu.mp { width: min(640px, 94vw); }
+.mp-head { display: flex; justify-content: space-between; align-items: center; font-family: var(--ui-font); color: #ddd; }
+.mp-head button { width: auto; padding: 0 14px; }
+#server-list { list-style: none; margin: 0; padding: 4px; min-height: 120px; max-height: 32vh; overflow-y: auto; background: rgba(0, 0, 0, 0.5); border: 2px solid #000; }
+#server-list li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; font-family: var(--ui-font); color: #fff; }
+#server-list li + li { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+#server-list li > div { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#server-list li span { color: #aaa; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#server-list li button { width: 110px; }
+#server-list li.empty { color: #aaa; justify-content: center; text-align: center; }
+.mp form.row input { flex: 1; }
+.mp form.row button { width: auto; padding: 0 16px; white-space: nowrap; }
+#server-list li > div { text-align: left; }
+
 </style>
 </head>
 <body>
@@ -582,18 +614,22 @@ input:not([type]):focus { border-color: #fff; }
 
   <section id="screen-multiplayer" class="screen dirt">
     <h2>Play Multiplayer</h2>
-    <form id="join-form" class="menu" autocomplete="off">
-      <label>Your Name<input id="mp-name" maxlength="16" pattern="[A-Za-z0-9_]{1,16}" placeholder="Steve"></label>
-      <label>Server Address<input id="mp-address" maxlength="80" placeholder="localhost:25565"></label>
+    <div class="menu wide mp">
+      <label>Your Name<input id="mp-name" maxlength="16" placeholder="Steve"></label>
+      <div class="mp-head"><span>Servers</span><button type="button" id="mp-refresh">Refresh</button></div>
+      <ul id="server-list"></ul>
       <p class="hint" id="mp-status"></p>
-      <div class="row">
-        <button type="submit">Join Server</button>
-        <button type="button" data-action="back-title">Cancel</button>
-      </div>
-      <p class="hint small">Everyone spawns at the same place in the server's world.
-        Host a server with <code>node tools/server.mjs</code>, or open a single-player world to your
-        network with <b>Open to LAN</b> in the pause menu (needs ClaudeCraft.exe or <code>node tools/server.mjs --lan</code>).</p>
-    </form>
+      <form id="create-server-form" class="row" autocomplete="off">
+        <input id="mp-server-name" maxlength="32" placeholder="Server name" required>
+        <button type="button" id="mp-mode" data-mode="survival">Survival</button>
+        <button type="submit">Create Server</button>
+      </form>
+      <form id="join-form" class="row" autocomplete="off">
+        <input id="mp-address" maxlength="80" placeholder="Or join by address, e.g. 192.168.1.20">
+        <button type="submit">Join</button>
+      </form>
+      <button type="button" data-action="back-title">Back</button>
+    </div>
   </section>
 
   <section id="screen-disconnected" class="screen dirt">
@@ -636,8 +672,41 @@ input:not([type]):focus { border-color: #fff; }
         <button type="button" id="opt-bob">View Bobbing: ON</button>
         <button type="button" id="opt-invert">Invert Mouse: OFF</button>
       </div>
+      <div class="row">
+        <button type="button" data-action="shader-packs">Shader Packs…</button>
+        <button type="button" id="opt-fullscreen">Fullscreen: ON</button>
+      </div>
       <button data-action="options-done">Done</button>
     </div>
+  </section>
+
+  <section id="screen-shaderpacks" class="screen dim">
+    <h2>Shader Packs</h2>
+    <div class="packs">
+      <div class="pack-side">
+        <ul id="pack-list"></ul>
+        <div class="row">
+          <button type="button" id="pack-new">New</button>
+          <button type="button" id="pack-import">Import File…</button>
+        </div>
+        <input type="file" id="pack-file" accept=".glsl,.frag,.fsh,.fs,.txt,.shader" hidden>
+      </div>
+      <div class="pack-main">
+        <label>Name<input id="pack-name" maxlength="40" spellcheck="false"></label>
+        <textarea id="pack-source" spellcheck="false" autocomplete="off"></textarea>
+        <p class="hint" id="pack-status"></p>
+        <div class="row">
+          <button type="button" id="pack-use">Use This Pack</button>
+          <button type="button" id="pack-off">Turn Off</button>
+          <button type="button" id="pack-delete">Delete</button>
+        </div>
+      </div>
+    </div>
+    <p class="hint small">A shader pack is a GLSL fragment shader that runs over every frame. Write it here, paste one
+      (Shadertoy-style <code>mainImage</code> works too) or import a .glsl file. It reads the frame from
+      <code>uScene</code> (also <code>uDepth</code>, <code>uTime</code>, <code>uResolution</code>, <code>uDaylight</code>,
+      <code>uUnderwater</code>, <code>uNether</code>, <code>vUV</code>) and writes <code>fragColor</code>.</p>
+    <div class="menu"><button data-action="packs-done">Done</button></div>
   </section>
 
   <section id="screen-controls" class="screen dim">
@@ -7499,8 +7568,164 @@ function skyState(ticks, rain = 0, flash = 0) {
 
 return { netherSky, skyState };
 })();
-// ---- src/shaders.js ----
+// ---- src/shaderpacks.js ----
 const __mod14 = (() => {
+
+// Custom shader packs: a fragment shader, written by the player (or pasted
+// from Shadertoy), that runs over the finished frame as a last pass. It sees
+// the rendered image and can recolour, blur, distort or stylise it.
+//
+// A pack is GLSL ES 3.0 with either
+//   void main() { fragColor = ...; }            (ClaudeCraft style), or
+//   void mainImage(out vec4 c, in vec2 p) {...} (Shadertoy style)
+// Available inputs:
+//   uScene       sampler2D  the rendered frame (also iChannel0)
+//   uDepth       sampler2D  scene depth, 0..1 (shaders on; 1.0 otherwise)
+//   uResolution  vec2       size in pixels (also iResolution.xy)
+//   uTime        float      seconds (also iTime)
+//   uDaylight    float      0 at night .. 1 at noon
+//   uUnderwater  float      1 when the camera is in water
+//   uNether      float      1 in the Nether
+//   vUV          vec2       0..1 texture coordinate of this pixel
+
+const SHADER_HEADER = `precision highp float;
+in vec2 vUV;
+uniform sampler2D uScene;
+uniform sampler2D uDepth;
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uDaylight;
+uniform float uUnderwater;
+uniform float uNether;
+#define iChannel0 uScene
+#define iTime uTime
+#define iResolution vec3(uResolution, 1.0)
+`;
+
+// Lines the wrapper adds before the pack's own code (plus the two that the
+// renderer adds: #version and #define), to report errors on the right line.
+function headerLines(source) {
+  return 2 + wrapShader(source).split(cleanSource(source))[0].split('\n').length - 1;
+}
+
+function cleanSource(source) {
+  return String(source ?? '').replace(/^\s*#version[^\n]*\n?/m, '').replace(/^\s*precision\s+\w+\s+float\s*;/m, '');
+}
+
+// The full fragment shader for a pack's source.
+function wrapShader(source) {
+  const src = cleanSource(source);
+  const shadertoy = /\bmainImage\s*\(/.test(src) && !/\bvoid\s+main\s*\(/.test(src);
+  const declaresOut = /\bout\s+vec4\s+\w+\s*;/.test(src);
+  let out = SHADER_HEADER + (declaresOut ? '' : 'out vec4 fragColor;\n') + src;
+  if (shadertoy) out += '\nvoid main() { mainImage(fragColor, vUV * uResolution); fragColor.a = 1.0; }\n';
+  return out;
+}
+
+const PRESETS = [
+  {
+    name: 'Cinematic',
+    source: `// Warm highlights, teal shadows, black bars and a soft vignette.
+void main() {
+  vec3 c = texture(uScene, vUV).rgb;
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  vec3 grade = mix(vec3(0.0, 0.08, 0.12), vec3(0.12, 0.05, -0.04), smoothstep(0.2, 0.8, l));
+  c = clamp(c + grade * 0.6, 0.0, 1.0);
+  c = mix(vec3(l), c, 1.15);
+  vec2 v = vUV - 0.5;
+  c *= 1.0 - dot(v, v) * 0.9;
+  float bars = step(0.1, vUV.y) * step(vUV.y, 0.9);
+  fragColor = vec4(c * bars, 1.0);
+}
+`,
+  },
+  {
+    name: 'Retro Pixels',
+    source: `// Chunky pixels with a limited colour palette, like an old console.
+void main() {
+  vec2 cells = uResolution / 4.0;
+  vec2 uv = (floor(vUV * cells) + 0.5) / cells;
+  vec3 c = texture(uScene, uv).rgb;
+  c = floor(c * 6.0 + 0.5) / 6.0;
+  fragColor = vec4(c, 1.0);
+}
+`,
+  },
+  {
+    name: 'Dreamy Glow',
+    source: `// Bright areas bleed a soft glow and colours get a little pastel.
+void main() {
+  vec3 c = texture(uScene, vUV).rgb;
+  vec3 glow = vec3(0.0);
+  for (int i = 0; i < 12; i++) {
+    float a = float(i) * 0.5236;
+    vec2 o = vec2(cos(a), sin(a)) * 6.0 / uResolution;
+    vec3 s = texture(uScene, vUV + o).rgb + texture(uScene, vUV + o * 2.5).rgb;
+    glow += max(s - 0.9, 0.0);
+  }
+  c += glow * 0.12;
+  c = mix(c, vec3(dot(c, vec3(0.33))), -0.1) * 0.95 + 0.05;
+  fragColor = vec4(c, 1.0);
+}
+`,
+  },
+  {
+    name: 'Black and White Film',
+    source: `// Grainy black-and-white film with flicker.
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec3 c = texture(uScene, vUV).rgb;
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  l = smoothstep(0.02, 0.98, l);
+  l += (hash(vUV * uResolution + fract(uTime) * 100.0) - 0.5) * 0.08;
+  l *= 0.95 + 0.05 * sin(uTime * 30.0);
+  vec2 v = vUV - 0.5;
+  l *= 1.0 - dot(v, v) * 1.2;
+  fragColor = vec4(vec3(l), 1.0);
+}
+`,
+  },
+  {
+    name: 'Cartoon Outlines',
+    source: `// Dark outlines where colours change sharply, and flatter shading.
+float lum(vec2 uv) { return dot(texture(uScene, uv).rgb, vec3(0.299, 0.587, 0.114)); }
+void main() {
+  vec2 px = 1.0 / uResolution;
+  float gx = lum(vUV + vec2(px.x, 0.0)) - lum(vUV - vec2(px.x, 0.0));
+  float gy = lum(vUV + vec2(0.0, px.y)) - lum(vUV - vec2(0.0, px.y));
+  float edge = smoothstep(0.12, 0.3, length(vec2(gx, gy)));
+  vec3 c = texture(uScene, vUV).rgb;
+  c = floor(c * 5.0 + 0.5) / 5.0;
+  fragColor = vec4(mix(c, vec3(0.05), edge), 1.0);
+}
+`,
+  },
+  {
+    name: 'Shadertoy Example (wavy)',
+    source: `// Shadertoy-style code works too: mainImage, iTime, iResolution, iChannel0.
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  uv.x += sin(uv.y * 20.0 + iTime * 2.0) * 0.003;
+  fragColor = texture(iChannel0, uv);
+}
+`,
+  },
+];
+
+const TEMPLATE = `// Your shader pack. Runs over every frame.
+// Inputs: uScene (the frame), uDepth, uResolution, uTime, uDaylight,
+// uUnderwater, uNether, vUV. Write the colour to fragColor.
+void main() {
+  vec3 c = texture(uScene, vUV).rgb;
+  // Try: c = c.bgr;  or  c *= vec3(1.1, 1.0, 0.9);
+  fragColor = vec4(c, 1.0);
+}
+`;
+
+return { SHADER_HEADER, headerLines, wrapShader, PRESETS, TEMPLATE };
+})();
+// ---- src/shaders.js ----
+const __mod15 = (() => {
 
 // GLSL sources. Programs that exist in both a "fancy" (shaders on) and a
 // "vanilla" variant are compiled twice with `#define FANCY 1/0`.
@@ -8203,7 +8428,7 @@ void main() {
 return { CHUNK_VS, CHUNK_FS, SHADOW_VS, SHADOW_FS, WATER_FS, FULLSCREEN_VS, SKY_FS, CLOUD_VS, CLOUD_FS, LINE_VS, LINE_FS, PARTICLE_VS, PARTICLE_FS, BRIGHT_FS, BLUR_FS, COPY_FS, RAYMASK_FS, RAYS_FS, COMPOSITE_FS, WEATHER_VS, WEATHER_FS };
 })();
 // ---- src/renderer.js ----
-const __mod15 = (() => {
+const __mod16 = (() => {
 const { CHUNK_SIZE } = __mod0;
 const { BLOCKS, isBlockItem } = __mod1;
 const { generateTextures } = __mod11;
@@ -8211,7 +8436,8 @@ const { VERTEX_BYTES, buildBlockMesh, buildOverlayCube, buildExtrudedSprite, ite
 const { mat4, perspective, multiply, viewRotation, cameraBasis, frustumPlanes, aabbInFrustum, compose, translation, rotationX, rotationY, rotationZ, scaling, ortho, lookRotation, transformPoint } = __mod4;
 const { SimplexNoise, mulberry32 } = __mod3;
 const { skyState, netherSky } = __mod13;
-const S = __mod14;
+const { wrapShader, headerLines } = __mod14;
+const S = __mod15;
 // WebGL2 renderer with two pipelines:
 //  - "fancy" (shaders on): HDR scene buffer, sun/moon shadow maps, physically
 //    inspired lighting, atmospheric sky and fog, reflective water, bloom,
@@ -8658,7 +8884,65 @@ class Renderer {
     } else {
       this.renderVanilla(frame);
     }
+    if (this.custom) this.applyCustomShader(state, sky);
     this.gl.bindVertexArray(null);
+  }
+
+  // --- Custom shader packs ---------------------------------------------------------
+
+  // Compiles a player's shader pack (see shaderpacks.js). Returns null on
+  // success or the compiler's message; an empty source turns it off.
+  setCustomShader(source) {
+    const gl = this.gl;
+    if (this.custom) gl.deleteProgram(this.custom.program);
+    this.custom = null;
+    if (!source || !source.trim()) return null;
+    try {
+      this.custom = program(gl, S.FULLSCREEN_VS, wrapShader(source));
+      return null;
+    } catch (err) {
+      const skip = headerLines(source);
+      return String(err.message || err).replace(/^Shader compile error: /, '')
+        .replace(/ERROR: (\d+):(\d+):/g, (m, f, line) => `Line ${Math.max(1, Number(line) - skip)}:`).replace(/\0/g, '').trim();
+    }
+  }
+
+  // Runs the pack over the finished frame: copy the canvas, then draw the
+  // pack's fragment shader back onto it.
+  applyCustomShader(state, sky) {
+    const gl = this.gl;
+    const w = this.canvas.width, h = this.canvas.height;
+    let t = this.postTarget;
+    if (!t || t.w !== w || t.h !== h) {
+      if (t) { gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); }
+      const fbo = gl.createFramebuffer();
+      const tex = this.makeTexture2D(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR, gl.CLAMP_TO_EDGE);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      t = this.postTarget = { fbo, tex, w, h };
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbo);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
+    gl.depthMask(false);
+    const c = this.custom;
+    gl.useProgram(c.program);
+    this.bindTex(0, t.tex, c.u.uScene);
+    const depth = this.fancy && this.targets ? this.targets.copy.depth : this.whiteTex || (this.whiteTex = this.makeTexture2D(1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]), gl.NEAREST, gl.CLAMP_TO_EDGE));
+    this.bindTex(1, depth, c.u.uDepth);
+    gl.uniform2f(c.u.uResolution, w, h);
+    gl.uniform1f(c.u.uTime, state.seconds || 0);
+    gl.uniform1f(c.u.uDaylight, sky.nether ? 0 : sky.day);
+    gl.uniform1f(c.u.uUnderwater, state.underwater ? 1 : 0);
+    gl.uniform1f(c.u.uNether, sky.nether ? 1 : 0);
+    this.fullscreen(c, null, w, h);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   collectVisible(state) {
@@ -9349,7 +9633,7 @@ class Renderer {
 return { Renderer };
 })();
 // ---- src/physics.js ----
-const __mod16 = (() => {
+const __mod17 = (() => {
 const { BLOCKS, IS_SOLID } = __mod1;
 const { CHUNK_HEIGHT } = __mod0;
 // Shared AABB-vs-voxel collision for the player and mobs.
@@ -9476,10 +9760,10 @@ function moveBody(world, body, dx, dy, dz, opts = {}) {
 return { cellBoxes, bodyBox, moveAxis, hasSupport, moveBody };
 })();
 // ---- src/player.js ----
-const __mod17 = (() => {
+const __mod18 = (() => {
 const { B, BLOCKS, IS_SOLID } = __mod1;
 const { CHUNK_HEIGHT } = __mod0;
-const { moveBody } = __mod16;
+const { moveBody } = __mod17;
 // First-person player: movement, AABB collision, swimming, flying, health.
 
 
@@ -9888,7 +10172,7 @@ function blockIsReplaceable(id) {
 return { PLAYER_WIDTH, PLAYER_HEIGHT, MAX_HEALTH, MAX_AIR, MAX_HUNGER, Player, blockIsReplaceable };
 })();
 // ---- src/inventory.js ----
-const __mod18 = (() => {
+const __mod19 = (() => {
 const { ITEMS, RECIPES } = __mod1;
 
 
@@ -10135,7 +10419,7 @@ function consumeCraftingGrid(slots) {
 return { maxStack, stack, Inventory, clickSlot, matchRecipe, consumeCraftingGrid };
 })();
 // ---- src/raycast.js ----
-const __mod19 = (() => {
+const __mod20 = (() => {
 const { BLOCKS } = __mod1;
 // Voxel ray traversal (Amanatides & Woo DDA) with per-shape hit boxes.
 
@@ -10211,7 +10495,7 @@ function raycast(getBlock, origin, dir, maxDist, liquids = false) {
 return { selectionBox, raycast };
 })();
 // ---- src/input.js ----
-const __mod20 = (() => {
+const __mod21 = (() => {
 
 // Keyboard / mouse state and pointer-lock management.
 class Input {
@@ -10229,8 +10513,13 @@ class Input {
     this.onLockChange = null; // (locked) => void
 
     window.addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab', 'F1', 'F3'].includes(e.code)) e.preventDefault();
+      // Ctrl is the sprint key: keep Ctrl+W (close), Ctrl+S, Ctrl+D... from
+      // reaching the browser. Ctrl+W itself can only be caught while the
+      // keyboard is locked in fullscreen (see lockKeyboard); otherwise the
+      // page asks before closing.
+      if ((e.ctrlKey || e.metaKey) && /^Key[A-Z]$/.test(e.code) && e.code !== 'KeyC' && e.code !== 'KeyV') e.preventDefault();
       if (!e.repeat) this.onKey?.(e.code, e);
       this.keys.add(e.code);
     });
@@ -10316,6 +10605,19 @@ class Input {
     });
   }
 
+  // Fullscreen with the keyboard locked: the game then receives shortcuts
+  // like Ctrl+W instead of the browser closing the window (Chrome and Edge).
+  // Must be called from a click or key press.
+  lockKeyboard() {
+    try {
+      const done = () => navigator.keyboard?.lock?.(['KeyW', 'KeyQ', 'KeyN', 'KeyT', 'KeyR', 'KeyS', 'KeyA', 'KeyD', 'KeyE', 'KeyF', 'Tab'])?.catch?.(() => {});
+      if (document.fullscreenElement) done();
+      else document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.then(done, () => {});
+    } catch {
+      /* not supported */
+    }
+  }
+
   unlock() {
     this.fallbackLook = false;
     if (document.pointerLockElement) document.exitPointerLock();
@@ -10332,7 +10634,7 @@ class Input {
 return { Input };
 })();
 // ---- src/audio.js ----
-const __mod21 = (() => {
+const __mod22 = (() => {
 const { BLOCKS } = __mod1;
 // Procedurally synthesized sound effects (WebAudio). No audio files needed.
 
@@ -10787,7 +11089,7 @@ class Sound {
 return { Sound };
 })();
 // ---- src/storage.js ----
-const __mod22 = (() => {
+const __mod23 = (() => {
 const { SAVE_VERSION } = __mod0;
 const { chunkKey } = __mod2;
 // World saves in localStorage. Only the seed and the player's block edits are
@@ -10988,7 +11290,7 @@ class Storage {
 return { toBase64, fromBase64, encodeEdits, decodeEdits, encodeBlockEntities, decodeBlockEntities, Storage };
 })();
 // ---- src/font.js ----
-const __mod23 = (() => {
+const __mod24 = (() => {
 
 // A blocky pixel font, drawn glyph by glyph below and turned into a real
 // TrueType font at startup, so every menu, tooltip and number in the game
@@ -11336,7 +11638,7 @@ async function loadPixelFont() {
 return { FONT_FAMILY, GLYPHS, glyphContours, buildFont, loadPixelFont };
 })();
 // ---- src/mobs.js ----
-const __mod24 = (() => {
+const __mod25 = (() => {
 const { MeshBuilder } = __mod12;
 const { mulberry32, hashString } = __mod3;
 const { I } = __mod1;
@@ -12262,11 +12564,11 @@ const PLAYER_MODEL = { parts: humanoid(), width: 0.6, height: 1.8 };
 return { SKIN, MOBS, SPAWN_EGGS, boxLayout, buildPartMesh, PLAYER_COLORS, ARMOR_MATERIAL_LIST, PLAYER_SKIN_BASE, ARMOR_SKIN_BASE, mobSkins, PLAYER_MODEL };
 })();
 // ---- src/icons.js ----
-const __mod25 = (() => {
+const __mod26 = (() => {
 const { BLOCKS, ITEMS, isBlockItem, FACE_PX, FACE_PY, FACE_PZ } = __mod1;
 const { generateTextures, tilePixels, TILE, TINT_GRASS, TINT_FOLIAGE } = __mod11;
-const { GLYPHS } = __mod23;
-const { mobSkins, PLAYER_SKIN_BASE } = __mod24;
+const { GLYPHS } = __mod24;
+const { mobSkins, PLAYER_SKIN_BASE } = __mod25;
 // Inventory icons rendered at runtime from the procedural textures:
 // isometric cubes for blocks, flat sprites for plants/items, plus HUD hearts.
 
@@ -12554,12 +12856,14 @@ function playerPreview(variant = 0) {
 return { itemIcon, hudIcons, dirtBackground, textureDataURL, logoDataURL, buttonTexture, playerPreview };
 })();
 // ---- src/ui.js ----
-const __mod26 = (() => {
+const __mod27 = (() => {
 const { ITEMS, BLOCKS, CREATIVE_ITEMS, SMELTING, SMELT_TIME, fuelTime, isBlockItem } = __mod1;
-const { clickSlot, matchRecipe, consumeCraftingGrid, maxStack, stack } = __mod18;
-const { itemIcon, hudIcons, dirtBackground, logoDataURL, buttonTexture, playerPreview } = __mod25;
-const { MAX_HEALTH, MAX_AIR, MAX_HUNGER } = __mod17;
+const { clickSlot, matchRecipe, consumeCraftingGrid, maxStack, stack } = __mod19;
+const { itemIcon, hudIcons, dirtBackground, logoDataURL, buttonTexture, playerPreview } = __mod26;
+const { MAX_HEALTH, MAX_AIR, MAX_HUNGER } = __mod18;
+const { PRESETS, TEMPLATE } = __mod14;
 // DOM user interface: menus, HUD, inventory and crafting screens.
+
 
 
 
@@ -12639,10 +12943,58 @@ class UI {
     const s = this.game.settings;
     if (!s.playerName) s.playerName = `Player${100 + Math.floor(Math.random() * 900)}`;
     $('mp-name').value = s.playerName;
-    const page = globalThis.location;
-    $('mp-address').value = s.serverAddress ?? (page && /^https?:$/.test(page.protocol) ? page.host : '');
+    $('mp-address').value = '';
     this.setMultiplayerStatus('');
+    this.renderServers(null);
     this.show('multiplayer');
+    this.refreshServers();
+    clearInterval(this.serverTimer);
+    this.serverTimer = setInterval(() => {
+      if (this.screen === 'multiplayer') this.refreshServers();
+      else clearInterval(this.serverTimer);
+    }, 3000);
+  }
+
+  async refreshServers() {
+    const list = await this.game.findServers();
+    if (this.screen === 'multiplayer') this.renderServers(list);
+  }
+
+  // Every server found on the network, each with a Join button.
+  renderServers(list) {
+    const ul = $('server-list');
+    if (!list) {
+      ul.replaceChildren(Object.assign(document.createElement('li'), { className: 'empty', textContent: 'Looking for servers…' }));
+      return;
+    }
+    if (!list.length) {
+      ul.replaceChildren(Object.assign(document.createElement('li'), {
+        className: 'empty',
+        textContent: 'No servers found on your network yet. Create one below, or join by address.',
+      }));
+      return;
+    }
+    ul.replaceChildren(...list.map((sv) => {
+      const li = document.createElement('li');
+      const info = document.createElement('div');
+      const name = Object.assign(document.createElement('b'), { textContent: sv.name });
+      const detail = Object.assign(document.createElement('span'), {
+        textContent: `${sv.players} online${sv.mode ? ` · ${sv.mode === 'creative' ? 'Creative' : 'Survival'}` : ''} · ${sv.address}`,
+      });
+      info.append(name, detail);
+      const btn = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Join' });
+      btn.addEventListener('click', () => this.joinFromMenu(sv.address, sv.alt));
+      li.append(info, btn);
+      return li;
+    }));
+  }
+
+  joinFromMenu(address, alt = null) {
+    this.game.sound.unlock();
+    const s = this.game.settings;
+    s.playerName = $('mp-name').value.trim() || 'Player';
+    this.game.saveSettings();
+    this.game.joinServer(address, s.playerName, alt);
   }
 
   setMultiplayerStatus(text, error = false) {
@@ -12685,6 +13037,8 @@ class UI {
       singleplayer: () => this.showWorlds(),
       multiplayer: () => this.showMultiplayer(),
       'open-lan': () => this.game.openToLan(),
+      'shader-packs': () => this.showShaderPacks(),
+      'packs-done': () => { this.game.saveSettings(); this.showOptions(); },
       controls: () => { this.controlsReturn = 'title'; this.show('controls'); },
       'controls-game': () => { this.controlsReturn = 'pause'; this.show('controls'); },
       'controls-done': () => this.show(this.controlsReturn),
@@ -12727,14 +13081,25 @@ class UI {
     });
     $('join-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      this.game.sound.unlock();
-      const name = $('mp-name').value.trim() || 'Player';
       const address = $('mp-address').value.trim();
+      if (!address) return this.setMultiplayerStatus('Type the address the host sees in their chat, e.g. 192.168.1.20.', true);
       const s = this.game.settings;
-      s.playerName = name;
-      s.serverAddress = address;
+      s.recentServers = [address, ...(s.recentServers || []).filter((a) => a !== address)].slice(0, 8);
+      this.joinFromMenu(address);
+    });
+    $('mp-mode').addEventListener('click', () => {
+      const b = $('mp-mode');
+      b.dataset.mode = b.dataset.mode === 'survival' ? 'creative' : 'survival';
+      b.textContent = b.dataset.mode === 'creative' ? 'Creative' : 'Survival';
+    });
+    $('mp-refresh').addEventListener('click', () => { this.renderServers(null); this.refreshServers(); });
+    $('create-server-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.game.sound.unlock();
+      const s = this.game.settings;
+      s.playerName = $('mp-name').value.trim() || 'Player';
       this.game.saveSettings();
-      this.game.joinServer(address, name);
+      this.game.createServer($('mp-server-name').value.trim(), $('mp-mode').dataset.mode);
     });
     $('create-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -12835,10 +13200,134 @@ class UI {
     toggle('opt-invert', 'invertMouse', 'Invert Mouse');
     toggle('opt-shaders', 'shaders', 'Shaders');
     toggle('opt-shadows', 'shadows', 'Shadows');
+    toggle('opt-fullscreen', 'fullscreen', 'Fullscreen');
+    this.bindShaderPacks();
+  }
+
+  // --- Shader packs ---------------------------------------------------------------
+
+  bindShaderPacks() {
+    const g = this.game;
+    const s = () => g.settings;
+    const mine = () => (s().shaderPacks ||= []);
+    $('pack-new').addEventListener('click', () => {
+      let n = 1;
+      while (g.findShaderPack(`My Shader ${n}`)) n++;
+      mine().push({ name: `My Shader ${n}`, source: TEMPLATE });
+      this.editPack(`My Shader ${n}`);
+    });
+    $('pack-import').addEventListener('click', () => $('pack-file').click());
+    $('pack-file').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const source = await file.text();
+      let name = file.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'Imported';
+      for (let i = 2; g.findShaderPack(name); i++) name = `${file.name.replace(/\.[^.]+$/, '').slice(0, 36)} ${i}`;
+      mine().push({ name, source });
+      this.editPack(name);
+      this.usePack();
+    });
+    // Edits to your own packs are kept as you type; presets are read-only
+    // until you change them, which saves a copy.
+    const edited = () => {
+      const cur = this.packEditing;
+      let pack = mine().find((p) => p.name === cur);
+      const name = $('pack-name').value.trim() || 'Untitled';
+      if (!pack) {
+        let copy = PRESETS.some((p) => p.name === name) ? `${name} (copy)` : name;
+        for (let i = 2; g.findShaderPack(copy); i++) copy = `${name} (copy ${i})`;
+        pack = { name: copy, source: '' };
+        mine().push(pack);
+        $('pack-name').value = copy;
+      } else if (name !== pack.name && !g.findShaderPack(name)) {
+        if (s().shaderPack === pack.name) s().shaderPack = name;
+        pack.name = name;
+      }
+      pack.source = $('pack-source').value;
+      this.packEditing = pack.name;
+      this.renderPackList();
+    };
+    $('pack-source').addEventListener('input', edited);
+    $('pack-name').addEventListener('change', edited);
+    $('pack-use').addEventListener('click', () => this.usePack());
+    $('pack-off').addEventListener('click', () => {
+      s().shaderPack = null;
+      g.applyShaderPack();
+      this.setPackStatus('Shader pack off.');
+      this.renderPackList();
+    });
+    $('pack-delete').addEventListener('click', () => {
+      const i = mine().findIndex((p) => p.name === this.packEditing);
+      if (i < 0) return this.setPackStatus('Built-in packs can\'t be deleted.', true);
+      if (!confirm(`Delete the shader pack "${this.packEditing}"?`)) return;
+      if (s().shaderPack === this.packEditing) s().shaderPack = null;
+      mine().splice(i, 1);
+      g.applyShaderPack();
+      this.editPack(PRESETS[0].name);
+    });
+    for (const id of ['pack-source', 'pack-name']) $(id).addEventListener('keydown', (e) => e.stopPropagation());
+    $('pack-source').addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      const t = e.target, a = t.selectionStart;
+      t.value = t.value.slice(0, a) + '  ' + t.value.slice(t.selectionEnd);
+      t.selectionStart = t.selectionEnd = a + 2;
+      edited();
+    });
+  }
+
+  showShaderPacks() {
+    this.editPack(this.game.settings.shaderPack || PRESETS[0].name);
+    const err = this.game.shaderError;
+    if (err) this.setPackStatus(`The active pack doesn't compile: ${err}`, true);
+    this.show('shaderpacks');
+  }
+
+  editPack(name) {
+    const pack = this.game.findShaderPack(name) || PRESETS[0];
+    this.packEditing = pack.name;
+    $('pack-name').value = pack.name;
+    $('pack-source').value = pack.source;
+    this.setPackStatus(this.game.settings.shaderPack === pack.name ? 'This pack is in use.' : '');
+    this.renderPackList();
+  }
+
+  usePack() {
+    const g = this.game;
+    g.settings.shaderPack = this.packEditing;
+    const err = g.applyShaderPack(true);
+    if (err) {
+      g.settings.shaderPack = null;
+      g.applyShaderPack(true);
+      this.setPackStatus(`Doesn't compile:\n${err}`, true);
+    } else this.setPackStatus(`Using "${this.packEditing}".`);
+    g.saveSettings();
+    this.renderPackList();
+  }
+
+  setPackStatus(text, error = false) {
+    const el = $('pack-status');
+    el.textContent = text;
+    el.classList.toggle('error', error);
+  }
+
+  renderPackList() {
+    const g = this.game;
+    const list = $('pack-list');
+    const all = [...PRESETS.map((p) => ({ ...p, builtIn: true })), ...(g.settings.shaderPacks || [])];
+    list.replaceChildren(...all.map((p) => {
+      const li = document.createElement('li');
+      li.textContent = `${p.name}${p.builtIn ? '' : ' ✎'}`;
+      li.classList.toggle('selected', p.name === this.packEditing);
+      li.classList.toggle('active', p.name === g.settings.shaderPack);
+      li.addEventListener('click', () => this.editPack(p.name));
+      return li;
+    }));
   }
 
   showOptions() {
-    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'music', 'viewBobbing', 'invertMouse', 'shaders', 'shadows']) this[`refresh_${k}`]();
+    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'music', 'viewBobbing', 'invertMouse', 'shaders', 'shadows', 'fullscreen']) this[`refresh_${k}`]();
     this.show('options');
   }
 
@@ -13460,7 +13949,7 @@ class UI {
 return { UI };
 })();
 // ---- src/particles.js ----
-const __mod27 = (() => {
+const __mod28 = (() => {
 const { IS_SOLID, BLOCKS } = __mod1;
 const { blockFaceLayer, textureLayer } = __mod12;
 // Block-breaking debris: little textured squares that bounce on the ground.
@@ -13587,11 +14076,11 @@ class Particles {
 return { Particles };
 })();
 // ---- src/entities.js ----
-const __mod28 = (() => {
+const __mod29 = (() => {
 const { B, I, BLOCKS, ITEMS, IS_SOLID, IS_OPAQUE, IS_FULL_CUBE, isBlockItem } = __mod1;
 const { CHUNK_HEIGHT, CHUNK_SIZE, SEA_LEVEL } = __mod0;
-const { MOBS, buildPartMesh } = __mod24;
-const { moveBody, bodyBox } = __mod16;
+const { MOBS, buildPartMesh } = __mod25;
+const { moveBody, bodyBox } = __mod17;
 const { buildBlockMesh, buildExtrudedSprite, itemSpriteName } = __mod12;
 const { compose, translation, rotationX, rotationY, rotationZ, scaling } = __mod4;
 const { BIOME } = __mod7;
@@ -15484,9 +15973,9 @@ class EntityManager {
 return { mobCategory, rayBox, EntityManager };
 })();
 // ---- src/gameplay.js ----
-const __mod29 = (() => {
+const __mod30 = (() => {
 const { B, BLOCKS, SMELTING, SMELT_TIME, fuelTime } = __mod1;
-const { maxStack, stack } = __mod18;
+const { maxStack, stack } = __mod19;
 // World simulation rules: furnaces, crop growth and explosions.
 
 
@@ -15659,10 +16148,10 @@ function explode(game, x, y, z, power) {
 return { newFurnace, newChest, tickFurnace, tickFurnaces, tickCrops, growSapling, explode };
 })();
 // ---- src/interact.js ----
-const __mod30 = (() => {
+const __mod31 = (() => {
 const { CHUNK_HEIGHT } = __mod0;
 const { B, I, BLOCKS, ITEMS, IS_SOLID, isBlockItem, orientedBlock } = __mod1;
-const { newFurnace, newChest, growSapling } = __mod29;
+const { newFurnace, newChest, growSapling } = __mod30;
 // Right-click behaviour: using items on blocks, mobs and the air, and
 // placing blocks (including two-block doors and beds and oriented blocks).
 
@@ -15988,9 +16477,9 @@ function placeBlock(game, t, itemId) {
 return { lookFacing, doorId, bedId, partnerOf, isInteractive, useInAir, useOnBlock, fertilize, toggleDoor };
 })();
 // ---- src/playermodel.js ----
-const __mod31 = (() => {
+const __mod32 = (() => {
 const { ITEMS } = __mod1;
-const { PLAYER_MODEL, PLAYER_SKIN_BASE, ARMOR_SKIN_BASE, ARMOR_MATERIAL_LIST, buildPartMesh } = __mod24;
+const { PLAYER_MODEL, PLAYER_SKIN_BASE, ARMOR_SKIN_BASE, ARMOR_MATERIAL_LIST, buildPartMesh } = __mod25;
 const { compose, translation, rotationX, rotationY, rotationZ, scaling } = __mod4;
 // Renders players (other people in multiplayer, and yourself in third
 // person): the humanoid body, worn armour and the item in the right hand.
@@ -16090,7 +16579,7 @@ class PlayerRenderer {
 return { PlayerRenderer };
 })();
 // ---- src/weather.js ----
-const __mod32 = (() => {
+const __mod33 = (() => {
 const { textureLayer } = __mod12;
 // Weather: clear skies, rain (snow in cold biomes) and thunderstorms with
 // lightning. Rain falls only on columns open to the sky, like the original.
@@ -16255,10 +16744,10 @@ class Weather {
 return { Weather };
 })();
 // ---- src/chat.js ----
-const __mod33 = (() => {
+const __mod34 = (() => {
 const { ITEMS } = __mod1;
-const { MOBS } = __mod24;
-const { maxStack } = __mod18;
+const { MOBS } = __mod25;
+const { maxStack } = __mod19;
 const { STRUCTURE_TYPES } = __mod6;
 // Chat box and commands (T to talk, / for commands).
 
@@ -16481,10 +16970,10 @@ class Chat {
 return { Chat };
 })();
 // ---- src/net.js ----
-const __mod34 = (() => {
+const __mod35 = (() => {
 const { B } = __mod1;
-const { encodeBlockEntities, decodeBlockEntities } = __mod22;
-const { rayBox } = __mod28;
+const { encodeBlockEntities, decodeBlockEntities } = __mod23;
+const { rayBox } = __mod29;
 // Multiplayer client. Connects to a ClaudeCraft server (tools/server.mjs, or
 // the one built into the Windows launcher) over a WebSocket and keeps this
 // game in step with everyone else's.
@@ -16997,35 +17486,37 @@ class Net {
 return { PROTOCOL, DEFAULT_PORT, serverUrl, Net };
 })();
 // ---- src/game.js ----
-const __mod35 = (() => {
+const __mod36 = (() => {
 const { CHUNK_SIZE, CHUNK_HEIGHT, DAY_LENGTH_TICKS, TICKS_PER_SECOND, GAME_NAME } = __mod0;
 const { B, I, BLOCKS, ITEMS, IS_SOLID, breakTime, blockDrops } = __mod1;
 const { World } = __mod9;
 const { buildChunkMesh } = __mod12;
-const { Renderer } = __mod15;
-const { Player } = __mod17;
-const { Inventory } = __mod18;
-const { raycast, selectionBox } = __mod19;
-const { Input } = __mod20;
-const { Sound } = __mod21;
-const { Storage, encodeEdits, decodeEdits, encodeBlockEntities, decodeBlockEntities } = __mod22;
-const { UI } = __mod26;
-const { Particles } = __mod27;
+const { Renderer } = __mod16;
+const { Player } = __mod18;
+const { Inventory } = __mod19;
+const { raycast, selectionBox } = __mod20;
+const { Input } = __mod21;
+const { Sound } = __mod22;
+const { Storage, encodeEdits, decodeEdits, encodeBlockEntities, decodeBlockEntities } = __mod23;
+const { UI } = __mod27;
+const { Particles } = __mod28;
 const { hashString } = __mod3;
 const { BIOME_NAMES } = __mod7;
-const { EntityManager } = __mod28;
-const { mobSkins } = __mod24;
-const { tickFurnaces, tickCrops, explode, newFurnace, newChest } = __mod29;
-const { useOnBlock, useInAir, isInteractive, partnerOf } = __mod30;
-const { PlayerRenderer } = __mod31;
-const { Weather } = __mod32;
-const { Chat } = __mod33;
+const { EntityManager } = __mod29;
+const { mobSkins } = __mod25;
+const { tickFurnaces, tickCrops, explode, newFurnace, newChest } = __mod30;
+const { useOnBlock, useInAir, isInteractive, partnerOf } = __mod31;
+const { PlayerRenderer } = __mod32;
+const { Weather } = __mod33;
+const { Chat } = __mod34;
 const { skyState } = __mod13;
 const { rollLoot } = __mod6;
-const { Net, serverUrl, DEFAULT_PORT } = __mod34;
+const { Net, serverUrl, DEFAULT_PORT } = __mod35;
+const { PRESETS } = __mod14;
 const { LAVA_SEA } = __mod8;
 // Game controller: owns the world, player, renderer and UI, runs the main
 // loop and implements the gameplay rules.
+
 
 
 
@@ -17063,6 +17554,9 @@ const DEFAULT_SETTINGS = {
   shaders: true,
   shadows: true,
   music: 50,
+  fullscreen: true,
+  shaderPack: null, // name of the custom shader pack in use
+  shaderPacks: [], // the player's own packs: { name, source }
 };
 
 const CREATIVE_HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.COBBLESTONE, B.PLANKS, B.LOG, B.GLASS, B.TORCH, B.LANTERN];
@@ -17140,7 +17634,14 @@ class Game {
     this.input.onLockChange = (locked) => {
       if (!locked && this.state === 'playing' && !this.input.fallbackLook) this.pause();
     };
-    window.addEventListener('beforeunload', () => this.saveWorld());
+    window.addEventListener('beforeunload', (e) => {
+      this.saveWorld();
+      // Closing the window by accident (Ctrl+W while sprinting) asks first.
+      if (this.player && this.state !== 'title') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.saveWorld();
     });
@@ -17165,6 +17666,22 @@ class Game {
     this.renderer.fancy = !!s.shaders;
     this.renderer.shadowsEnabled = !!s.shadows;
     this.renderer.shadowDistance = Math.min(96, Math.max(48, s.renderDistance * 16));
+    this.applyShaderPack();
+  }
+
+  // Compiles the chosen custom shader pack; returns the error, if any.
+  applyShaderPack(force = false) {
+    const pack = this.findShaderPack(this.settings.shaderPack);
+    const source = pack?.source || '';
+    if (!force && source === this.shaderSource) return this.shaderError;
+    this.shaderSource = source;
+    this.shaderError = this.renderer.setCustomShader(source);
+    return this.shaderError;
+  }
+
+  findShaderPack(name) {
+    if (!name) return null;
+    return (this.settings.shaderPacks || []).find((p) => p.name === name) || PRESETS.find((p) => p.name === name) || null;
   }
 
   saveSettings() {
@@ -17254,6 +17771,10 @@ class Game {
 
   finishLoading() {
     const p = this.player;
+    if (this.hostAfterLoading) {
+      this.hostAfterLoading = false;
+      setTimeout(() => this.openToLan(), 0);
+    }
     if (this.portalDest) {
       this.arriveThroughPortal();
       this.portalDest = null;
@@ -17305,15 +17826,25 @@ class Game {
   // --- Multiplayer ---------------------------------------------------------------------
 
   // Joins a server: its world, time and weather replace the local game's.
-  async joinServer(address, name) {
-    const net = new Net(this);
+  // `alt`: another address for the same server, tried if the first fails.
+  async joinServer(address, name, alt = null) {
+    let net = new Net(this);
     this.ui.setMultiplayerStatus('Connecting…');
     let welcome;
     try {
       welcome = await net.connect(serverUrl(address), { name });
     } catch (err) {
-      this.ui.setMultiplayerStatus(err.message, true);
-      return false;
+      if (!alt || alt === address || /version|hosting|already/i.test(err.message)) {
+        this.ui.setMultiplayerStatus(err.message, true);
+        return false;
+      }
+      try {
+        net = new Net(this);
+        welcome = await net.connect(serverUrl(alt), { name });
+      } catch (err2) {
+        this.ui.setMultiplayerStatus(err2.message, true);
+        return false;
+      }
     }
     this.leaveServer();
     this.net = net;
@@ -17384,6 +17915,76 @@ class Game {
     this.resume();
   }
 
+  // Servers on the network: the ones the local server (the launcher's, or
+  // tools/server.mjs) hears announcing themselves, plus recently used ones.
+  async findServers() {
+    const get = async (url) => {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1500);
+      try {
+        const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+        return r.ok ? await r.json() : null;
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const found = new Map();
+    const add = (sv) => {
+      const key = `${sv.name}|${sv.address.split(':').pop()}`;
+      if (!found.has(key) || /^(localhost|127\.)/.test(found.get(key).address)) found.set(key, sv);
+    };
+    const bases = new Set([this.localServerBase()]);
+    for (const a of this.settings.recentServers || []) bases.add(`http://${serverUrl(a).replace(/^wss?:\/\/|\/ws$/g, '')}`);
+    await Promise.all([...bases].map(async (base) => {
+      const [list, info] = await Promise.all([get(`${base}/api/servers`), get(`${base}/api/info`)]);
+      const host = base.replace(/^https?:\/\//, '');
+      for (const sv of list?.servers || []) {
+        // The server running where we asked can also be reached that way
+        // (useful when this computer has several network addresses).
+        const local = info?.name === sv.name && Number(sv.address.split(':').pop()) === info.port;
+        add(local ? { ...sv, alt: host } : sv);
+      }
+      if (info?.name) {
+        const lanIp = info.addresses?.[0];
+        add({ name: info.name, address: /^(localhost|127\.)/.test(host) && lanIp ? `${lanIp}:${info.port}` : host, alt: host, players: info.players?.length || 0 });
+      }
+    }));
+    return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // The server on this computer: the page's own origin when it was opened
+  // from a server, otherwise the launcher's (its port comes in #lan=).
+  localServerBase() {
+    const page = globalThis.location;
+    if (page && /^https?:$/.test(page.protocol)) return page.origin;
+    const port = Number(new URLSearchParams((page?.hash || '').slice(1)).get('lan')) || DEFAULT_PORT;
+    return `http://localhost:${port}`;
+  }
+
+  // "Create Server": a new world with that name, opened to the network right
+  // away, so anyone on it can join from their server list.
+  async createServer(name, mode = 'survival') {
+    name = String(name || '').trim().slice(0, 32);
+    if (!name) return this.ui.setMultiplayerStatus('Give your server a name.', true);
+    this.ui.setMultiplayerStatus('Creating…');
+    let info = null;
+    try {
+      const r = await fetch(`${this.localServerBase()}/api/info`, { cache: 'no-store' });
+      info = r.ok ? await r.json() : null;
+    } catch {
+      info = null;
+    }
+    if (!info) {
+      return this.ui.setMultiplayerStatus('Servers are hosted by ClaudeCraft.exe: start the game from it (or run "node tools/server.mjs --lan") and try again.', true);
+    }
+    if (!info.lan) return this.ui.setMultiplayerStatus('This page comes from a server that already has a world: join it from the list.', true);
+    if (info.name) return this.ui.setMultiplayerStatus(`This computer is already hosting "${info.name}".`, true);
+    this.hostAfterLoading = true;
+    this.createWorld({ name, seed: '', mode });
+  }
+
   leaveServer() {
     if (!this.net) return;
     const net = this.net;
@@ -17403,6 +18004,7 @@ class Game {
   // --- State transitions ------------------------------------------------------------
 
   lockPointer() {
+    if (this.settings.fullscreen) this.input.lockKeyboard();
     this.input.lock().then((ok) => {
       if (ok || this.state !== 'playing') return;
       this.lockFailures++;
@@ -18600,9 +19202,9 @@ class Game {
 return { DEFAULT_SETTINGS, parseSeed, Game };
 })();
 // ---- src/main.js ----
-const __mod36 = (() => {
-const { Game } = __mod35;
-const { loadPixelFont } = __mod23;
+const __mod37 = (() => {
+const { Game } = __mod36;
+const { loadPixelFont } = __mod24;
 // Entry point.
 
 

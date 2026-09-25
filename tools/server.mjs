@@ -19,6 +19,7 @@ import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir, stat, rename } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
+import { createSocket } from 'node:dgram';
 import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hashString } from '../src/noise.js';
@@ -48,6 +49,73 @@ function parseSeed(text) {
   if (!t) return (Math.random() * 4294967296) >>> 0;
   if (/^-?\d+$/.test(t)) return Number(BigInt.asUintN(32, BigInt(t)));
   return hashString(t);
+}
+
+export const DISCOVERY_PORT = 25566;
+
+// Broadcast addresses of this computer's networks (for server discovery).
+function broadcastAddresses() {
+  const out = new Set(['255.255.255.255']);
+  for (const list of Object.values(networkInterfaces())) {
+    for (const a of list || []) {
+      if (a.family !== 'IPv4' || a.internal || !a.netmask) continue;
+      const ip = a.address.split('.').map(Number), mask = a.netmask.split('.').map(Number);
+      out.add(ip.map((v, i) => (v & mask[i]) | (~mask[i] & 255)).join('.'));
+    }
+  }
+  return [...out];
+}
+
+// LAN server discovery: every server with a world announces itself every two
+// seconds over UDP broadcast, and remembers the announcements it hears, so
+// the Multiplayer screen can list every server on the network.
+export class Discovery {
+  constructor(info, port = DISCOVERY_PORT) {
+    this.info = info; // () => { name, port, players } or null when not hosting
+    this.port = port;
+    this.heard = new Map(); // "ip:port" -> { name, address, players, seen }
+  }
+
+  start() {
+    const sock = createSocket({ type: 'udp4', reuseAddr: true });
+    this.sock = sock;
+    sock.on('error', () => {});
+    sock.on('message', (buf, rinfo) => {
+      let m;
+      try { m = JSON.parse(buf.toString('utf8')); } catch { return; }
+      if (m?.game !== 'claudecraft' || !Number.isInteger(m.port) || typeof m.name !== 'string') return;
+      const address = `${rinfo.address}:${m.port}`;
+      this.heard.set(address, { name: m.name.slice(0, 40), address, players: m.players | 0, mode: m.mode, seen: Date.now() });
+    });
+    sock.bind(this.port, () => {
+      try { sock.setBroadcast(true); } catch { /* ignore */ }
+    });
+    this.timer = setInterval(() => this.announce(), 2000);
+    this.announce();
+  }
+
+  announce() {
+    const info = this.info();
+    if (!info || !this.sock) return;
+    const msg = Buffer.from(JSON.stringify({ game: 'claudecraft', protocol: PROTOCOL, ...info }));
+    for (const addr of broadcastAddresses()) this.sock.send(msg, this.port, addr, () => {});
+  }
+
+  // Servers heard in the last few seconds.
+  servers() {
+    const now = Date.now();
+    const out = [];
+    for (const [k, v] of this.heard) {
+      if (now - v.seen > 7000) this.heard.delete(k);
+      else out.push({ name: v.name, address: v.address, players: v.players, mode: v.mode });
+    }
+    return out;
+  }
+
+  stop() {
+    clearInterval(this.timer);
+    try { this.sock?.close(); } catch { /* ignore */ }
+  }
 }
 
 export function lanAddresses() {
@@ -278,6 +346,13 @@ export class GameServer {
     });
     this.port = this.http.address().port;
     this.pingTimer = setInterval(() => this.heartbeat(), 15000);
+    if (o.discovery !== false) {
+      this.discovery = new Discovery(() => (this.world.meta ? {
+        name: this.world.meta.name, port: this.port, mode: this.world.meta.mode,
+        players: [...this.clients.values()].filter((c) => c.name).length,
+      } : null), o.discoveryPort);
+      this.discovery.start();
+    }
     this.log(`ClaudeCraft server on port ${this.port}. Join at: ${['localhost', ...lanAddresses()].map((a) => `http://${a}:${this.port}/`).join('  ')}`);
     return this;
   }
@@ -285,6 +360,7 @@ export class GameServer {
   async stop() {
     clearInterval(this.saveTimer);
     clearInterval(this.pingTimer);
+    this.discovery?.stop();
     for (const c of this.clients.values()) c.ws.close(1001);
     await this.save();
     await new Promise((ok) => this.http.close(ok));
@@ -302,6 +378,11 @@ export class GameServer {
   async serveHttp(req, res) {
     try {
       const url = new URL(req.url, 'http://localhost');
+      if (url.pathname === '/api/servers') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ servers: this.discovery ? this.discovery.servers() : [], lan: this.opts.lan, hosting: !!this.world.meta }));
+        return;
+      }
       if (url.pathname === '/api/info') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ game: 'claudecraft', protocol: PROTOCOL, name: this.world.meta?.name || null, lan: this.opts.lan, players: [...this.clients.values()].filter((c) => c.name).map((c) => c.name), addresses: lanAddresses(), port: this.port }));

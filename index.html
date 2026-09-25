@@ -85,18 +85,22 @@
 
   <section id="screen-multiplayer" class="screen dirt">
     <h2>Play Multiplayer</h2>
-    <form id="join-form" class="menu" autocomplete="off">
-      <label>Your Name<input id="mp-name" maxlength="16" pattern="[A-Za-z0-9_]{1,16}" placeholder="Steve"></label>
-      <label>Server Address<input id="mp-address" maxlength="80" placeholder="localhost:25565"></label>
+    <div class="menu wide mp">
+      <label>Your Name<input id="mp-name" maxlength="16" placeholder="Steve"></label>
+      <div class="mp-head"><span>Servers</span><button type="button" id="mp-refresh">Refresh</button></div>
+      <ul id="server-list"></ul>
       <p class="hint" id="mp-status"></p>
-      <div class="row">
-        <button type="submit">Join Server</button>
-        <button type="button" data-action="back-title">Cancel</button>
-      </div>
-      <p class="hint small">Everyone spawns at the same place in the server's world.
-        Host a server with <code>node tools/server.mjs</code>, or open a single-player world to your
-        network with <b>Open to LAN</b> in the pause menu (needs ClaudeCraft.exe or <code>node tools/server.mjs --lan</code>).</p>
-    </form>
+      <form id="create-server-form" class="row" autocomplete="off">
+        <input id="mp-server-name" maxlength="32" placeholder="Server name" required>
+        <button type="button" id="mp-mode" data-mode="survival">Survival</button>
+        <button type="submit">Create Server</button>
+      </form>
+      <form id="join-form" class="row" autocomplete="off">
+        <input id="mp-address" maxlength="80" placeholder="Or join by address, e.g. 192.168.1.20">
+        <button type="submit">Join</button>
+      </form>
+      <button type="button" data-action="back-title">Back</button>
+    </div>
   </section>
 
   <section id="screen-disconnected" class="screen dirt">
@@ -139,8 +143,41 @@
         <button type="button" id="opt-bob">View Bobbing: ON</button>
         <button type="button" id="opt-invert">Invert Mouse: OFF</button>
       </div>
+      <div class="row">
+        <button type="button" data-action="shader-packs">Shader Packs…</button>
+        <button type="button" id="opt-fullscreen">Fullscreen: ON</button>
+      </div>
       <button data-action="options-done">Done</button>
     </div>
+  </section>
+
+  <section id="screen-shaderpacks" class="screen dim">
+    <h2>Shader Packs</h2>
+    <div class="packs">
+      <div class="pack-side">
+        <ul id="pack-list"></ul>
+        <div class="row">
+          <button type="button" id="pack-new">New</button>
+          <button type="button" id="pack-import">Import File…</button>
+        </div>
+        <input type="file" id="pack-file" accept=".glsl,.frag,.fsh,.fs,.txt,.shader" hidden>
+      </div>
+      <div class="pack-main">
+        <label>Name<input id="pack-name" maxlength="40" spellcheck="false"></label>
+        <textarea id="pack-source" spellcheck="false" autocomplete="off"></textarea>
+        <p class="hint" id="pack-status"></p>
+        <div class="row">
+          <button type="button" id="pack-use">Use This Pack</button>
+          <button type="button" id="pack-off">Turn Off</button>
+          <button type="button" id="pack-delete">Delete</button>
+        </div>
+      </div>
+    </div>
+    <p class="hint small">A shader pack is a GLSL fragment shader that runs over every frame. Write it here, paste one
+      (Shadertoy-style <code>mainImage</code> works too) or import a .glsl file. It reads the frame from
+      <code>uScene</code> (also <code>uDepth</code>, <code>uTime</code>, <code>uResolution</code>, <code>uDaylight</code>,
+      <code>uUnderwater</code>, <code>uNether</code>, <code>vUV</code>) and writes <code>fragColor</code>.</p>
+    <div class="menu"><button data-action="packs-done">Done</button></div>
   </section>
 
   <section id="screen-controls" class="screen dim">

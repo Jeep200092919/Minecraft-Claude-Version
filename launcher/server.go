@@ -29,6 +29,7 @@ import (
 const (
 	protocolVersion = 1
 	defaultPort     = 25565
+	discoveryPort   = 25566
 	wsGUID          = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 	maxMessage      = 32 << 20
 )
@@ -251,10 +252,19 @@ type lanServer struct {
 	port      int
 	active    time.Time
 	gameHTML  []byte
+	heard     map[string]heardServer // LAN servers announcing themselves, by "ip:port"
+}
+
+type heardServer struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	Players int    `json:"players"`
+	Mode    string `json:"mode,omitempty"`
+	seen    time.Time
 }
 
 func newLANServer(gameHTML []byte) *lanServer {
-	return &lanServer{clients: map[string]*client{}, nextID: 1, gameHTML: gameHTML, active: time.Now()}
+	return &lanServer{clients: map[string]*client{}, nextID: 1, gameHTML: gameHTML, active: time.Now(), heard: map[string]heardServer{}}
 }
 
 // listen serves on the first free port from defaultPort up.
@@ -262,6 +272,7 @@ func (s *lanServer) listen() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.serveWS)
 	mux.HandleFunc("/api/info", s.serveInfo)
+	mux.HandleFunc("/api/servers", s.serveServers)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.touch()
 		if r.URL.Path != "/" && r.URL.Path != "/index.html" && r.URL.Path != "/claudecraft.html" {
@@ -282,6 +293,7 @@ func (s *lanServer) listen() error {
 		s.port = port
 		go http.Serve(ln, mux)
 		go s.heartbeat()
+		go s.discover()
 		return nil
 	}
 	return lastErr
@@ -315,6 +327,104 @@ func (s *lanServer) heartbeat() {
 			c.ws.write(0x9, nil)
 		}
 	}
+}
+
+// LAN discovery: while hosting a world the server announces it every two
+// seconds by UDP broadcast, and it lists the announcements it hears, so the
+// Multiplayer screen shows every server on the network. Same format as
+// tools/server.mjs.
+func (s *lanServer) discover() {
+	if ln, err := net.ListenPacket("udp4", ":"+strconv.Itoa(discoveryPort)); err == nil {
+		go func() {
+			buf := make([]byte, 2048)
+			for {
+				n, from, err := ln.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				var m struct {
+					Game    string `json:"game"`
+					Name    string `json:"name"`
+					Port    int    `json:"port"`
+					Players int    `json:"players"`
+					Mode    string `json:"mode"`
+				}
+				ua, ok := from.(*net.UDPAddr)
+				if json.Unmarshal(buf[:n], &m) != nil || m.Game != "claudecraft" || m.Port <= 0 || !ok {
+					continue
+				}
+				if len(m.Name) > 40 {
+					m.Name = m.Name[:40]
+				}
+				addr := ua.IP.String() + ":" + strconv.Itoa(m.Port)
+				s.mu.Lock()
+				s.heard[addr] = heardServer{Name: m.Name, Address: addr, Players: m.Players, Mode: m.Mode, seen: time.Now()}
+				s.mu.Unlock()
+			}
+		}()
+	}
+	out, err := net.ListenPacket("udp4", ":0")
+	if err != nil {
+		return
+	}
+	for range time.Tick(2 * time.Second) {
+		s.mu.Lock()
+		var msg []byte
+		if s.world != nil {
+			players := 0
+			for _, c := range s.clients {
+				if c.name != "" {
+					players++
+				}
+			}
+			msg, _ = json.Marshal(map[string]any{"game": "claudecraft", "protocol": protocolVersion, "name": s.world.meta["name"], "port": s.port, "players": players, "mode": s.world.meta["mode"]})
+		}
+		s.mu.Unlock()
+		if msg == nil {
+			continue
+		}
+		for _, b := range broadcastAddresses() {
+			out.WriteTo(msg, &net.UDPAddr{IP: b, Port: discoveryPort})
+		}
+	}
+}
+
+func broadcastAddresses() []net.IP {
+	list := []net.IP{net.IPv4bcast}
+	addrs, _ := net.InterfaceAddrs()
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok || ipn.IP.IsLoopback() {
+			continue
+		}
+		ip4, mask := ipn.IP.To4(), ipn.Mask
+		if ip4 == nil || len(mask) != 4 {
+			continue
+		}
+		b := make(net.IP, 4)
+		for i := range b {
+			b[i] = ip4[i] | ^mask[i]
+		}
+		list = append(list, b)
+	}
+	return list
+}
+
+func (s *lanServer) serveServers(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	list := []heardServer{}
+	for k, v := range s.heard {
+		if time.Since(v.seen) > 7*time.Second {
+			delete(s.heard, k)
+			continue
+		}
+		list = append(list, v)
+	}
+	hosting := s.world != nil
+	s.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(map[string]any{"servers": list, "lan": true, "hosting": hosting})
 }
 
 func lanAddresses() []string {

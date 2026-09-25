@@ -14,8 +14,13 @@ export class Input {
     this.onLockChange = null; // (locked) => void
 
     window.addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab', 'F1', 'F3'].includes(e.code)) e.preventDefault();
+      // Ctrl is the sprint key: keep Ctrl+W (close), Ctrl+S, Ctrl+D... from
+      // reaching the browser. Ctrl+W itself can only be caught while the
+      // keyboard is locked in fullscreen (see lockKeyboard); otherwise the
+      // page asks before closing.
+      if ((e.ctrlKey || e.metaKey) && /^Key[A-Z]$/.test(e.code) && e.code !== 'KeyC' && e.code !== 'KeyV') e.preventDefault();
       if (!e.repeat) this.onKey?.(e.code, e);
       this.keys.add(e.code);
     });
@@ -99,6 +104,19 @@ export class Input {
       }
       setTimeout(() => done(document.pointerLockElement === this.canvas), 1500);
     });
+  }
+
+  // Fullscreen with the keyboard locked: the game then receives shortcuts
+  // like Ctrl+W instead of the browser closing the window (Chrome and Edge).
+  // Must be called from a click or key press.
+  lockKeyboard() {
+    try {
+      const done = () => navigator.keyboard?.lock?.(['KeyW', 'KeyQ', 'KeyN', 'KeyT', 'KeyR', 'KeyS', 'KeyA', 'KeyD', 'KeyE', 'KeyF', 'Tab'])?.catch?.(() => {});
+      if (document.fullscreenElement) done();
+      else document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.then(done, () => {});
+    } catch {
+      /* not supported */
+    }
   }
 
   unlock() {

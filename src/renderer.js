@@ -13,6 +13,7 @@ import {
 } from './math.js';
 import { SimplexNoise, mulberry32 } from './noise.js';
 import { skyState, netherSky } from './sky.js';
+import { wrapShader, headerLines } from './shaderpacks.js';
 import * as S from './shaders.js';
 
 function compile(gl, type, src) {
@@ -454,7 +455,65 @@ export class Renderer {
     } else {
       this.renderVanilla(frame);
     }
+    if (this.custom) this.applyCustomShader(state, sky);
     this.gl.bindVertexArray(null);
+  }
+
+  // --- Custom shader packs ---------------------------------------------------------
+
+  // Compiles a player's shader pack (see shaderpacks.js). Returns null on
+  // success or the compiler's message; an empty source turns it off.
+  setCustomShader(source) {
+    const gl = this.gl;
+    if (this.custom) gl.deleteProgram(this.custom.program);
+    this.custom = null;
+    if (!source || !source.trim()) return null;
+    try {
+      this.custom = program(gl, S.FULLSCREEN_VS, wrapShader(source));
+      return null;
+    } catch (err) {
+      const skip = headerLines(source);
+      return String(err.message || err).replace(/^Shader compile error: /, '')
+        .replace(/ERROR: (\d+):(\d+):/g, (m, f, line) => `Line ${Math.max(1, Number(line) - skip)}:`).replace(/\0/g, '').trim();
+    }
+  }
+
+  // Runs the pack over the finished frame: copy the canvas, then draw the
+  // pack's fragment shader back onto it.
+  applyCustomShader(state, sky) {
+    const gl = this.gl;
+    const w = this.canvas.width, h = this.canvas.height;
+    let t = this.postTarget;
+    if (!t || t.w !== w || t.h !== h) {
+      if (t) { gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); }
+      const fbo = gl.createFramebuffer();
+      const tex = this.makeTexture2D(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR, gl.CLAMP_TO_EDGE);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      t = this.postTarget = { fbo, tex, w, h };
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbo);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
+    gl.depthMask(false);
+    const c = this.custom;
+    gl.useProgram(c.program);
+    this.bindTex(0, t.tex, c.u.uScene);
+    const depth = this.fancy && this.targets ? this.targets.copy.depth : this.whiteTex || (this.whiteTex = this.makeTexture2D(1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]), gl.NEAREST, gl.CLAMP_TO_EDGE));
+    this.bindTex(1, depth, c.u.uDepth);
+    gl.uniform2f(c.u.uResolution, w, h);
+    gl.uniform1f(c.u.uTime, state.seconds || 0);
+    gl.uniform1f(c.u.uDaylight, sky.nether ? 0 : sky.day);
+    gl.uniform1f(c.u.uUnderwater, state.underwater ? 1 : 0);
+    gl.uniform1f(c.u.uNether, sky.nether ? 1 : 0);
+    this.fullscreen(c, null, w, h);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   collectVisible(state) {

@@ -25,6 +25,7 @@ import { Chat } from './chat.js';
 import { skyState } from './sky.js';
 import { rollLoot } from './structures.js';
 import { Net, serverUrl, DEFAULT_PORT } from './net.js';
+import { PRESETS } from './shaderpacks.js';
 import { LAVA_SEA } from './nether.js';
 
 export const DEFAULT_SETTINGS = {
@@ -37,6 +38,9 @@ export const DEFAULT_SETTINGS = {
   shaders: true,
   shadows: true,
   music: 50,
+  fullscreen: true,
+  shaderPack: null, // name of the custom shader pack in use
+  shaderPacks: [], // the player's own packs: { name, source }
 };
 
 const CREATIVE_HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.COBBLESTONE, B.PLANKS, B.LOG, B.GLASS, B.TORCH, B.LANTERN];
@@ -114,7 +118,14 @@ export class Game {
     this.input.onLockChange = (locked) => {
       if (!locked && this.state === 'playing' && !this.input.fallbackLook) this.pause();
     };
-    window.addEventListener('beforeunload', () => this.saveWorld());
+    window.addEventListener('beforeunload', (e) => {
+      this.saveWorld();
+      // Closing the window by accident (Ctrl+W while sprinting) asks first.
+      if (this.player && this.state !== 'title') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.saveWorld();
     });
@@ -139,6 +150,22 @@ export class Game {
     this.renderer.fancy = !!s.shaders;
     this.renderer.shadowsEnabled = !!s.shadows;
     this.renderer.shadowDistance = Math.min(96, Math.max(48, s.renderDistance * 16));
+    this.applyShaderPack();
+  }
+
+  // Compiles the chosen custom shader pack; returns the error, if any.
+  applyShaderPack(force = false) {
+    const pack = this.findShaderPack(this.settings.shaderPack);
+    const source = pack?.source || '';
+    if (!force && source === this.shaderSource) return this.shaderError;
+    this.shaderSource = source;
+    this.shaderError = this.renderer.setCustomShader(source);
+    return this.shaderError;
+  }
+
+  findShaderPack(name) {
+    if (!name) return null;
+    return (this.settings.shaderPacks || []).find((p) => p.name === name) || PRESETS.find((p) => p.name === name) || null;
   }
 
   saveSettings() {
@@ -228,6 +255,10 @@ export class Game {
 
   finishLoading() {
     const p = this.player;
+    if (this.hostAfterLoading) {
+      this.hostAfterLoading = false;
+      setTimeout(() => this.openToLan(), 0);
+    }
     if (this.portalDest) {
       this.arriveThroughPortal();
       this.portalDest = null;
@@ -279,15 +310,25 @@ export class Game {
   // --- Multiplayer ---------------------------------------------------------------------
 
   // Joins a server: its world, time and weather replace the local game's.
-  async joinServer(address, name) {
-    const net = new Net(this);
+  // `alt`: another address for the same server, tried if the first fails.
+  async joinServer(address, name, alt = null) {
+    let net = new Net(this);
     this.ui.setMultiplayerStatus('Connecting…');
     let welcome;
     try {
       welcome = await net.connect(serverUrl(address), { name });
     } catch (err) {
-      this.ui.setMultiplayerStatus(err.message, true);
-      return false;
+      if (!alt || alt === address || /version|hosting|already/i.test(err.message)) {
+        this.ui.setMultiplayerStatus(err.message, true);
+        return false;
+      }
+      try {
+        net = new Net(this);
+        welcome = await net.connect(serverUrl(alt), { name });
+      } catch (err2) {
+        this.ui.setMultiplayerStatus(err2.message, true);
+        return false;
+      }
     }
     this.leaveServer();
     this.net = net;
@@ -358,6 +399,76 @@ export class Game {
     this.resume();
   }
 
+  // Servers on the network: the ones the local server (the launcher's, or
+  // tools/server.mjs) hears announcing themselves, plus recently used ones.
+  async findServers() {
+    const get = async (url) => {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1500);
+      try {
+        const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+        return r.ok ? await r.json() : null;
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const found = new Map();
+    const add = (sv) => {
+      const key = `${sv.name}|${sv.address.split(':').pop()}`;
+      if (!found.has(key) || /^(localhost|127\.)/.test(found.get(key).address)) found.set(key, sv);
+    };
+    const bases = new Set([this.localServerBase()]);
+    for (const a of this.settings.recentServers || []) bases.add(`http://${serverUrl(a).replace(/^wss?:\/\/|\/ws$/g, '')}`);
+    await Promise.all([...bases].map(async (base) => {
+      const [list, info] = await Promise.all([get(`${base}/api/servers`), get(`${base}/api/info`)]);
+      const host = base.replace(/^https?:\/\//, '');
+      for (const sv of list?.servers || []) {
+        // The server running where we asked can also be reached that way
+        // (useful when this computer has several network addresses).
+        const local = info?.name === sv.name && Number(sv.address.split(':').pop()) === info.port;
+        add(local ? { ...sv, alt: host } : sv);
+      }
+      if (info?.name) {
+        const lanIp = info.addresses?.[0];
+        add({ name: info.name, address: /^(localhost|127\.)/.test(host) && lanIp ? `${lanIp}:${info.port}` : host, alt: host, players: info.players?.length || 0 });
+      }
+    }));
+    return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // The server on this computer: the page's own origin when it was opened
+  // from a server, otherwise the launcher's (its port comes in #lan=).
+  localServerBase() {
+    const page = globalThis.location;
+    if (page && /^https?:$/.test(page.protocol)) return page.origin;
+    const port = Number(new URLSearchParams((page?.hash || '').slice(1)).get('lan')) || DEFAULT_PORT;
+    return `http://localhost:${port}`;
+  }
+
+  // "Create Server": a new world with that name, opened to the network right
+  // away, so anyone on it can join from their server list.
+  async createServer(name, mode = 'survival') {
+    name = String(name || '').trim().slice(0, 32);
+    if (!name) return this.ui.setMultiplayerStatus('Give your server a name.', true);
+    this.ui.setMultiplayerStatus('Creating…');
+    let info = null;
+    try {
+      const r = await fetch(`${this.localServerBase()}/api/info`, { cache: 'no-store' });
+      info = r.ok ? await r.json() : null;
+    } catch {
+      info = null;
+    }
+    if (!info) {
+      return this.ui.setMultiplayerStatus('Servers are hosted by ClaudeCraft.exe: start the game from it (or run "node tools/server.mjs --lan") and try again.', true);
+    }
+    if (!info.lan) return this.ui.setMultiplayerStatus('This page comes from a server that already has a world: join it from the list.', true);
+    if (info.name) return this.ui.setMultiplayerStatus(`This computer is already hosting "${info.name}".`, true);
+    this.hostAfterLoading = true;
+    this.createWorld({ name, seed: '', mode });
+  }
+
   leaveServer() {
     if (!this.net) return;
     const net = this.net;
@@ -377,6 +488,7 @@ export class Game {
   // --- State transitions ------------------------------------------------------------
 
   lockPointer() {
+    if (this.settings.fullscreen) this.input.lockKeyboard();
     this.input.lock().then((ok) => {
       if (ok || this.state !== 'playing') return;
       this.lockFailures++;

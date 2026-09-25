@@ -43,16 +43,23 @@ F1              hide HUD
 MULTIPLAYER
 -----------
 Everyone joins the same world and spawns at the same place.
-LAN:     start ClaudeCraft.exe, open a world, press Esc and click
-         "Open to LAN". Friends on the same network open the address shown
-         in chat (http://<your computer>:25565/) in their browser, or use
-         Multiplayer -> Join Server. Allow ClaudeCraft through the Windows
-         firewall when asked.
+Join:    click Multiplayer. Servers on your network are listed: click Join.
+         Or type a server's address (like 192.168.1.20:25565) and click Join.
+Create:  start ClaudeCraft.exe, click Multiplayer, type a server name and
+         click Create Server. It appears in your friends' lists. Allow
+         ClaudeCraft through the Windows firewall when asked.
 Server:  with Node.js installed, run  node tools/server.mjs  from the source
          code (see the GitHub page) for an always-on server.
 
+SHADERS
+-------
 Shaders (shadows, reflective water, bloom, god rays) are on by default;
 turn them off in Options -> Shaders if the game runs slowly.
+Options -> Shader Packs lets you write, paste or import your own GLSL
+shader pack (Shadertoy code works too), or pick one of the examples.
+
+Ctrl+W and other browser shortcuts don't close the game while you play
+(it runs fullscreen with the keyboard locked). Esc pauses.
 
 Your worlds are saved automatically in the browser.
 

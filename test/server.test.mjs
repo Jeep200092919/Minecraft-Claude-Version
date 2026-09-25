@@ -62,7 +62,7 @@ test('server addresses', () => {
 test('players share one world through the server', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'cc-server-'));
   const file = join(dir, 'world.json');
-  const server = await new GameServer({ port: 0, host: '127.0.0.1', world: file, seed: 'abc', mode: 'survival', name: 'Test', quiet: true }).start();
+  const server = await new GameServer({ port: 0, host: '127.0.0.1', world: file, seed: 'abc', mode: 'survival', name: 'Test', quiet: true, discovery: false }).start();
   try {
     const a = await connect(server.port, { name: 'Alice' });
     assert.equal(a.welcome.t, 'welcome');
@@ -105,7 +105,7 @@ test('players share one world through the server', async () => {
 });
 
 test('LAN mode waits for a host and closes with it', async () => {
-  const server = await new GameServer({ port: 0, host: '127.0.0.1', lan: true, quiet: true }).start();
+  const server = await new GameServer({ port: 0, host: '127.0.0.1', lan: true, quiet: true, discovery: false }).start();
   try {
     const early = await connect(server.port, { name: 'Early' });
     assert.equal(early.welcome.t, 'error');

@@ -3,6 +3,7 @@ import { ITEMS, BLOCKS, CREATIVE_ITEMS, SMELTING, SMELT_TIME, fuelTime, isBlockI
 import { clickSlot, matchRecipe, consumeCraftingGrid, maxStack, stack } from './inventory.js';
 import { itemIcon, hudIcons, dirtBackground, logoDataURL, buttonTexture, playerPreview } from './icons.js';
 import { MAX_HEALTH, MAX_AIR, MAX_HUNGER } from './player.js';
+import { PRESETS, TEMPLATE } from './shaderpacks.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -78,10 +79,58 @@ export class UI {
     const s = this.game.settings;
     if (!s.playerName) s.playerName = `Player${100 + Math.floor(Math.random() * 900)}`;
     $('mp-name').value = s.playerName;
-    const page = globalThis.location;
-    $('mp-address').value = s.serverAddress ?? (page && /^https?:$/.test(page.protocol) ? page.host : '');
+    $('mp-address').value = '';
     this.setMultiplayerStatus('');
+    this.renderServers(null);
     this.show('multiplayer');
+    this.refreshServers();
+    clearInterval(this.serverTimer);
+    this.serverTimer = setInterval(() => {
+      if (this.screen === 'multiplayer') this.refreshServers();
+      else clearInterval(this.serverTimer);
+    }, 3000);
+  }
+
+  async refreshServers() {
+    const list = await this.game.findServers();
+    if (this.screen === 'multiplayer') this.renderServers(list);
+  }
+
+  // Every server found on the network, each with a Join button.
+  renderServers(list) {
+    const ul = $('server-list');
+    if (!list) {
+      ul.replaceChildren(Object.assign(document.createElement('li'), { className: 'empty', textContent: 'Looking for servers…' }));
+      return;
+    }
+    if (!list.length) {
+      ul.replaceChildren(Object.assign(document.createElement('li'), {
+        className: 'empty',
+        textContent: 'No servers found on your network yet. Create one below, or join by address.',
+      }));
+      return;
+    }
+    ul.replaceChildren(...list.map((sv) => {
+      const li = document.createElement('li');
+      const info = document.createElement('div');
+      const name = Object.assign(document.createElement('b'), { textContent: sv.name });
+      const detail = Object.assign(document.createElement('span'), {
+        textContent: `${sv.players} online${sv.mode ? ` · ${sv.mode === 'creative' ? 'Creative' : 'Survival'}` : ''} · ${sv.address}`,
+      });
+      info.append(name, detail);
+      const btn = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Join' });
+      btn.addEventListener('click', () => this.joinFromMenu(sv.address, sv.alt));
+      li.append(info, btn);
+      return li;
+    }));
+  }
+
+  joinFromMenu(address, alt = null) {
+    this.game.sound.unlock();
+    const s = this.game.settings;
+    s.playerName = $('mp-name').value.trim() || 'Player';
+    this.game.saveSettings();
+    this.game.joinServer(address, s.playerName, alt);
   }
 
   setMultiplayerStatus(text, error = false) {
@@ -124,6 +173,8 @@ export class UI {
       singleplayer: () => this.showWorlds(),
       multiplayer: () => this.showMultiplayer(),
       'open-lan': () => this.game.openToLan(),
+      'shader-packs': () => this.showShaderPacks(),
+      'packs-done': () => { this.game.saveSettings(); this.showOptions(); },
       controls: () => { this.controlsReturn = 'title'; this.show('controls'); },
       'controls-game': () => { this.controlsReturn = 'pause'; this.show('controls'); },
       'controls-done': () => this.show(this.controlsReturn),
@@ -166,14 +217,25 @@ export class UI {
     });
     $('join-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      this.game.sound.unlock();
-      const name = $('mp-name').value.trim() || 'Player';
       const address = $('mp-address').value.trim();
+      if (!address) return this.setMultiplayerStatus('Type the address the host sees in their chat, e.g. 192.168.1.20.', true);
       const s = this.game.settings;
-      s.playerName = name;
-      s.serverAddress = address;
+      s.recentServers = [address, ...(s.recentServers || []).filter((a) => a !== address)].slice(0, 8);
+      this.joinFromMenu(address);
+    });
+    $('mp-mode').addEventListener('click', () => {
+      const b = $('mp-mode');
+      b.dataset.mode = b.dataset.mode === 'survival' ? 'creative' : 'survival';
+      b.textContent = b.dataset.mode === 'creative' ? 'Creative' : 'Survival';
+    });
+    $('mp-refresh').addEventListener('click', () => { this.renderServers(null); this.refreshServers(); });
+    $('create-server-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.game.sound.unlock();
+      const s = this.game.settings;
+      s.playerName = $('mp-name').value.trim() || 'Player';
       this.game.saveSettings();
-      this.game.joinServer(address, name);
+      this.game.createServer($('mp-server-name').value.trim(), $('mp-mode').dataset.mode);
     });
     $('create-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -274,10 +336,134 @@ export class UI {
     toggle('opt-invert', 'invertMouse', 'Invert Mouse');
     toggle('opt-shaders', 'shaders', 'Shaders');
     toggle('opt-shadows', 'shadows', 'Shadows');
+    toggle('opt-fullscreen', 'fullscreen', 'Fullscreen');
+    this.bindShaderPacks();
+  }
+
+  // --- Shader packs ---------------------------------------------------------------
+
+  bindShaderPacks() {
+    const g = this.game;
+    const s = () => g.settings;
+    const mine = () => (s().shaderPacks ||= []);
+    $('pack-new').addEventListener('click', () => {
+      let n = 1;
+      while (g.findShaderPack(`My Shader ${n}`)) n++;
+      mine().push({ name: `My Shader ${n}`, source: TEMPLATE });
+      this.editPack(`My Shader ${n}`);
+    });
+    $('pack-import').addEventListener('click', () => $('pack-file').click());
+    $('pack-file').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const source = await file.text();
+      let name = file.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'Imported';
+      for (let i = 2; g.findShaderPack(name); i++) name = `${file.name.replace(/\.[^.]+$/, '').slice(0, 36)} ${i}`;
+      mine().push({ name, source });
+      this.editPack(name);
+      this.usePack();
+    });
+    // Edits to your own packs are kept as you type; presets are read-only
+    // until you change them, which saves a copy.
+    const edited = () => {
+      const cur = this.packEditing;
+      let pack = mine().find((p) => p.name === cur);
+      const name = $('pack-name').value.trim() || 'Untitled';
+      if (!pack) {
+        let copy = PRESETS.some((p) => p.name === name) ? `${name} (copy)` : name;
+        for (let i = 2; g.findShaderPack(copy); i++) copy = `${name} (copy ${i})`;
+        pack = { name: copy, source: '' };
+        mine().push(pack);
+        $('pack-name').value = copy;
+      } else if (name !== pack.name && !g.findShaderPack(name)) {
+        if (s().shaderPack === pack.name) s().shaderPack = name;
+        pack.name = name;
+      }
+      pack.source = $('pack-source').value;
+      this.packEditing = pack.name;
+      this.renderPackList();
+    };
+    $('pack-source').addEventListener('input', edited);
+    $('pack-name').addEventListener('change', edited);
+    $('pack-use').addEventListener('click', () => this.usePack());
+    $('pack-off').addEventListener('click', () => {
+      s().shaderPack = null;
+      g.applyShaderPack();
+      this.setPackStatus('Shader pack off.');
+      this.renderPackList();
+    });
+    $('pack-delete').addEventListener('click', () => {
+      const i = mine().findIndex((p) => p.name === this.packEditing);
+      if (i < 0) return this.setPackStatus('Built-in packs can\'t be deleted.', true);
+      if (!confirm(`Delete the shader pack "${this.packEditing}"?`)) return;
+      if (s().shaderPack === this.packEditing) s().shaderPack = null;
+      mine().splice(i, 1);
+      g.applyShaderPack();
+      this.editPack(PRESETS[0].name);
+    });
+    for (const id of ['pack-source', 'pack-name']) $(id).addEventListener('keydown', (e) => e.stopPropagation());
+    $('pack-source').addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      const t = e.target, a = t.selectionStart;
+      t.value = t.value.slice(0, a) + '  ' + t.value.slice(t.selectionEnd);
+      t.selectionStart = t.selectionEnd = a + 2;
+      edited();
+    });
+  }
+
+  showShaderPacks() {
+    this.editPack(this.game.settings.shaderPack || PRESETS[0].name);
+    const err = this.game.shaderError;
+    if (err) this.setPackStatus(`The active pack doesn't compile: ${err}`, true);
+    this.show('shaderpacks');
+  }
+
+  editPack(name) {
+    const pack = this.game.findShaderPack(name) || PRESETS[0];
+    this.packEditing = pack.name;
+    $('pack-name').value = pack.name;
+    $('pack-source').value = pack.source;
+    this.setPackStatus(this.game.settings.shaderPack === pack.name ? 'This pack is in use.' : '');
+    this.renderPackList();
+  }
+
+  usePack() {
+    const g = this.game;
+    g.settings.shaderPack = this.packEditing;
+    const err = g.applyShaderPack(true);
+    if (err) {
+      g.settings.shaderPack = null;
+      g.applyShaderPack(true);
+      this.setPackStatus(`Doesn't compile:\n${err}`, true);
+    } else this.setPackStatus(`Using "${this.packEditing}".`);
+    g.saveSettings();
+    this.renderPackList();
+  }
+
+  setPackStatus(text, error = false) {
+    const el = $('pack-status');
+    el.textContent = text;
+    el.classList.toggle('error', error);
+  }
+
+  renderPackList() {
+    const g = this.game;
+    const list = $('pack-list');
+    const all = [...PRESETS.map((p) => ({ ...p, builtIn: true })), ...(g.settings.shaderPacks || [])];
+    list.replaceChildren(...all.map((p) => {
+      const li = document.createElement('li');
+      li.textContent = `${p.name}${p.builtIn ? '' : ' ✎'}`;
+      li.classList.toggle('selected', p.name === this.packEditing);
+      li.classList.toggle('active', p.name === g.settings.shaderPack);
+      li.addEventListener('click', () => this.editPack(p.name));
+      return li;
+    }));
   }
 
   showOptions() {
-    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'music', 'viewBobbing', 'invertMouse', 'shaders', 'shadows']) this[`refresh_${k}`]();
+    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'music', 'viewBobbing', 'invertMouse', 'shaders', 'shadows', 'fullscreen']) this[`refresh_${k}`]();
     this.show('options');
   }
 
