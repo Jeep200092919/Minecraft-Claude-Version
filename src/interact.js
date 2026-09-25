@@ -69,7 +69,7 @@ function throwItem(game, type) {
   const eye = p.eye(), d = p.lookDir();
   const speed = type === 'ender_pearl' ? 22 : 24;
   game.entities.shoot(type, [eye[0] + d[0] * 0.4, eye[1] - 0.1 + d[1] * 0.4, eye[2] + d[2] * 0.4],
-    [d[0] * speed + p.vel[0], d[1] * speed + 2 + p.vel[1] * 0.3, d[2] * speed + p.vel[2]], 'player');
+    [d[0] * speed + p.vel[0], d[1] * speed + 2 + p.vel[1] * 0.3, d[2] * speed + p.vel[2]], game.entities.localRef);
   game.sound.throw?.();
   game.swing = 1;
 }

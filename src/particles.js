@@ -3,6 +3,7 @@ import { IS_SOLID, BLOCKS } from './blocks.js';
 import { blockFaceLayer, textureLayer } from './mesher.js';
 
 const MAX_PARTICLES = 600;
+const FX_KINDS = { heart: 0, portal: 1, sparkle: 3, angry: 4, crit: 5, slime: 6, ink: 7 };
 
 export class Particles {
   constructor() {
@@ -31,6 +32,19 @@ export class Particles {
       this._spawn(x + (Math.random() - 0.5) * spread * 2, y + (Math.random() - 0.5) * spread, z + (Math.random() - 0.5) * spread * 2,
         (Math.random() - 0.5) * 0.6, 0.8 + Math.random(), (Math.random() - 0.5) * 0.6, layer,
         { u: (cell & 3) * 4, v: (cell >> 2) * 4, size: size * (0.7 + Math.random() * 0.6), life: 0.8 + Math.random() * 0.8, grav: -1.5 });
+    }
+  }
+
+  // Effect particles from the fx sheet (see textures.js). kind picks a cell.
+  fx(kind, x, y, z, n = 5, spread = 0.4, opts = {}) {
+    const cell = FX_KINDS[kind];
+    const layer = textureLayer('fx');
+    for (let i = 0; i < n; i++) {
+      const c = kind === 'portal' ? cell + (Math.random() < 0.5 ? 1 : 0) : cell;
+      const v = opts.vel ?? 0.6;
+      this._spawn(x + (Math.random() - 0.5) * spread * 2, y + (Math.random() - 0.5) * spread * 2, z + (Math.random() - 0.5) * spread * 2,
+        (Math.random() - 0.5) * v * 2, (opts.up ?? 0.6) + (Math.random() - 0.5) * v, (Math.random() - 0.5) * v * 2, layer,
+        { u: (c & 3) * 4, v: (c >> 2) * 4, size: (opts.size ?? 0.14) * (0.8 + Math.random() * 0.4), life: opts.life ?? 0.7 + Math.random() * 0.6, grav: opts.grav ?? -0.4 });
     }
   }
 

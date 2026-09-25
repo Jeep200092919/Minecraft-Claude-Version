@@ -307,6 +307,18 @@ export const I = {
   GOLDEN_SHOVEL: 368,
   GOLDEN_SWORD: 369,
   GOLDEN_HOE: 370,
+  SKELETON_SPAWN_EGG: 371,
+  SPIDER_SPAWN_EGG: 372,
+  ENDERMAN_SPAWN_EGG: 373,
+  SLIME_SPAWN_EGG: 374,
+  WOLF_SPAWN_EGG: 375,
+  IRON_GOLEM_SPAWN_EGG: 376,
+  SQUID_SPAWN_EGG: 377,
+  BAT_SPAWN_EGG: 378,
+  RABBIT_SPAWN_EGG: 379,
+  RAW_RABBIT: 380,
+  COOKED_RABBIT: 381,
+  INK_SAC: 382,
 };
 export const ARMOR_MATERIALS = ['leather', 'iron', 'golden', 'diamond'];
 export const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
@@ -751,6 +763,13 @@ for (const mob of ['pig', 'cow', 'sheep', 'chicken', 'zombie', 'creeper', 'villa
   const label = mob[0].toUpperCase() + mob.slice(1);
   item(I[`${mob.toUpperCase()}_SPAWN_EGG`], `${mob}_spawn_egg`, `${label} Spawn Egg`, { spawns: mob });
 }
+for (const mob of ['skeleton', 'spider', 'enderman', 'slime', 'wolf', 'iron_golem', 'squid', 'bat', 'rabbit']) {
+  const label = mob.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  item(I[`${mob.toUpperCase()}_SPAWN_EGG`], `${mob}_spawn_egg`, `${label} Spawn Egg`, { spawns: mob });
+}
+item(I.RAW_RABBIT, 'raw_rabbit', 'Raw Rabbit', food(3, 1.8));
+item(I.COOKED_RABBIT, 'cooked_rabbit', 'Cooked Rabbit', food(5, 6));
+item(I.INK_SAC, 'ink_sac', 'Ink Sac');
 item(I.BOW, 'bow', 'Bow', { maxStack: 1, durability: 384, bow: true });
 item(I.ARROW, 'arrow', 'Arrow');
 item(I.BUCKET, 'bucket', 'Bucket', { maxStack: 16, bucket: 'empty' });
@@ -900,6 +919,7 @@ export const SMELTING = new Map([
   [I.RAW_BEEF, I.STEAK],
   [I.RAW_CHICKEN, I.COOKED_CHICKEN],
   [I.RAW_MUTTON, I.COOKED_MUTTON],
+  [I.RAW_RABBIT, I.COOKED_RABBIT],
 ]);
 export const SMELT_TIME = 10;
 

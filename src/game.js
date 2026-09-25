@@ -745,7 +745,7 @@ export class Game {
       this.particles.smoke(mob.pos[0], mob.pos[1] + mob.h, mob.pos[2], 4, 0.3, 0.06, 0.1);
     }
     if (this.net && !this.net.isAuthority) this.net.sendMobHit(mob.id, dmg, p.pos);
-    else mob.hurt(dmg, p.pos, this.entities, 'player');
+    else mob.hurt(dmg, p.pos, this.entities, this.entities.localRef);
     if (item?.tool) this.damageHeld(item.tool.type === 'sword' ? 1 : 2);
     p.addExhaustion(0.1, this.creative);
     this.attackCooldown = 0.25;
@@ -756,6 +756,20 @@ export class Game {
   useOnMob(mob) {
     const inv = this.inventory;
     const it = inv.selectedStack ? ITEMS.get(inv.selectedStack.id) : null;
+    if (mob.def.tameable) {
+      // Taming with bones, feeding and telling a tamed wolf to sit.
+      const ref = this.entities.localRef;
+      let r;
+      if (this.net && !this.net.isAuthority) {
+        this.net.sendMobUse(mob.id, it?.id ?? null);
+        r = !mob.tamed && it?.id === I.BONE && !mob.target ? 'consume' : mob.tamed && mob.owner === ref ? 'use' : null;
+      } else r = this.entities.interactMob(mob, it?.id ?? null, ref);
+      if (r) {
+        if (r === 'consume' && !this.creative) inv.take(inv.selected, 1);
+        this.swing = 1;
+        return true;
+      }
+    }
     if (!it) return false;
     if (it.id === I.SHEARS && mob.type === 'sheep' && !mob.sheared) {
       mob.sheared = true;
@@ -815,7 +829,7 @@ export class Game {
     const spread = 0.01;
     const v = [d[0] + (Math.random() - 0.5) * spread, d[1] + (Math.random() - 0.5) * spread, d[2] + (Math.random() - 0.5) * spread];
     const dmg = Math.ceil(power * 6) + (power >= 1 ? Math.floor(Math.random() * 3) : 0);
-    const a = this.entities.shoot('arrow', [eye[0] + d[0] * 0.5, eye[1] - 0.1, eye[2] + d[2] * 0.5], [v[0] * speed, v[1] * speed, v[2] * speed], 'player', dmg);
+    const a = this.entities.shoot('arrow', [eye[0] + d[0] * 0.5, eye[1] - 0.1, eye[2] + d[2] * 0.5], [v[0] * speed, v[1] * speed, v[2] * speed], this.entities.localRef, dmg);
     a.pickup = !this.creative;
     this.net?.sendProjectile?.(a);
     this.damageHeld(1);

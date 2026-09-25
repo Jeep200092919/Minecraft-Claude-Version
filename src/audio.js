@@ -203,6 +203,20 @@ export class Sound {
     if (this._ready()) this._tone(300, 0.4, 0.3, 0, 1400, 'sawtooth');
   }
 
+  // The eerie scream of an enderman that has been looked at.
+  stare() {
+    if (!this._ready()) return;
+    this._voice('sawtooth', 120, 60, 1.6, 0.25, { filter: 700, trem: 11 });
+    this._tone(1500, 1.2, 0.05, 0, 700, 'sine');
+  }
+
+  // Heavy iron golem swing.
+  slam() {
+    if (!this._ready()) return;
+    this._burst('stone', 0.3, 0.6, 0.5);
+    this._tone(70, 0.3, 0.3, 0, 40, 'triangle');
+  }
+
   // A filtered oscillator voice with an optional pitch glide and tremolo.
   _voice(type, f0, f1, dur, gain, { filter = 900, trem = 0, delay = 0 } = {}) {
     const ctx = this.ctx;
@@ -266,6 +280,39 @@ export class Sound {
         break;
       case 'creeper':
         if (hurt) this._burst('sand', 0.25, 0.3, 0.8);
+        break;
+      case 'skeleton':
+        // Rattling bones.
+        for (let i = 0; i < (hurt ? 3 : 4); i++) this._tone((700 + Math.random() * 500) * p, 0.05, g * 0.5, i * 0.07, 300 * p, 'square');
+        break;
+      case 'spider':
+        this._burst('sand', hurt ? 0.25 : 0.5, 0.35, 1.8 * p);
+        if (!hurt) this._voice('sawtooth', 120 * p, 90 * p, 0.3, g * 0.5, { filter: 400, trem: 18 });
+        break;
+      case 'enderman':
+        this._voice('sawtooth', 160 * p, hurt ? 90 : 220 * p, hurt ? 0.5 : 0.8, g * 0.7, { filter: 600, trem: 5 });
+        this._tone(900 * p, 0.5, 0.05, 0.1, 600 * p, 'sine');
+        break;
+      case 'slime':
+        this._voice('sine', 150 * p, 90 * p, 0.18, g * 0.9, { filter: 500 });
+        this._burst('grass', 0.12, 0.3, 0.6);
+        break;
+      case 'wolf':
+        if (hurt) this._voice('triangle', 700 * p, 500 * p, 0.2, g, { filter: 1600 });
+        else for (let i = 0; i < 2; i++) this._voice('sawtooth', 340 * p, 220 * p, 0.1, g, { filter: 1200, delay: i * 0.22 });
+        break;
+      case 'golem':
+        this._burst('stone', hurt ? 0.3 : 0.2, 0.45, 0.6);
+        this._tone(90 * p, 0.3, 0.12, 0, 70 * p, 'triangle');
+        break;
+      case 'squid':
+        this._burst('wool', 0.3, 0.25, 0.8);
+        break;
+      case 'bat':
+        for (let i = 0; i < 2; i++) this._tone((3200 + Math.random() * 800) * p, 0.05, g * 0.35, i * 0.09, 2400 * p, 'triangle');
+        break;
+      case 'rabbit':
+        if (hurt) this._tone(1300 * p, 0.12, g * 0.5, 0, 900 * p, 'triangle');
         break;
     }
   }

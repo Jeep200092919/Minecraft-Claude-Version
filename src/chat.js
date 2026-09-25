@@ -110,7 +110,7 @@ export class Chat {
     // the player who runs the world simulation.
     switch ((cmd || '').toLowerCase()) {
       case 'help':
-        this.add('Commands: /time set <day|noon|night|midnight|n>, /time add <n>, /weather <clear|rain|thunder>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <mob>, /kill, /spawnpoint, /xp <n>, /clear, /seed', '#aaaaaa');
+        this.add('Commands: /time set <day|noon|night|midnight|n>, /time add <n>, /weather <clear|rain|thunder>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <mob> [slime size], /kill, /spawnpoint, /xp <n>, /clear, /seed', '#aaaaaa');
         return;
       case 'time': {
         const names = { day: 1000, noon: 6000, sunset: 12000, night: 13000, midnight: 18000, sunrise: 23000 };
@@ -168,7 +168,8 @@ export class Chat {
         const type = (args[0] || '').toLowerCase();
         if (!MOBS[type]) return this.error(`Unknown mob '${args[0] || ''}'. Try: ${Object.keys(MOBS).join(', ')}`);
         const d = p.lookDir();
-        g.entities.spawn(type, p.pos[0] + d[0] * 2, p.pos[1], p.pos[2] + d[2] * 2);
+        const size = Number(args[1]);
+        g.entities.spawn(type, p.pos[0] + d[0] * 2, p.pos[1], p.pos[2] + d[2] * 2, { size: [1, 2, 4].includes(size) ? size : 0 });
         this.add(`Summoned new ${type}`, '#aaaaaa');
         return;
       }

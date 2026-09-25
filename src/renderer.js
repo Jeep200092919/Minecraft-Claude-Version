@@ -510,11 +510,14 @@ export class Renderer {
 
   // Entities: each has parts [{ mesh, matrix }], pos, light [sky, block],
   // overlay [r, g, b, a] and texture ('entity' | 'blocks').
-  drawEntities(prog, entities, cam, shadowPass = false) {
+  // Draws entity models. Parts flagged translucent (slime gel) are drawn in a
+  // separate blended pass after the opaque scene.
+  drawEntities(prog, entities, cam, shadowPass = false, translucent = false) {
     if (!entities || !entities.length) return;
     const gl = this.gl;
     const u = prog.u;
     for (const e of entities) {
+      if (translucent && !e.parts.some((pt) => pt.translucent)) continue;
       const kind = e.texture || 'entity';
       if (kind === 'entity' && !this.entityTexture) continue;
       gl.activeTexture(gl.TEXTURE0);
@@ -529,7 +532,7 @@ export class Renderer {
         gl.uniform4f(u.uOverlay, o[0], o[1], o[2], o[3]);
       }
       for (const part of e.parts) {
-        if (!part.mesh) continue;
+        if (!part.mesh || !!part.translucent !== translucent) continue;
         gl.uniformMatrix4fv(u.uModel, false, part.matrix);
         gl.bindVertexArray(part.mesh.vao);
         gl.drawElements(gl.TRIANGLES, part.mesh.count, gl.UNSIGNED_INT, 0);
@@ -602,8 +605,10 @@ export class Renderer {
     gl.disable(gl.CULL_FACE);
     visible.sort((a, b) => b.d2 - a.d2);
     this.drawChunkList(p, visible, cam, 'water');
-    gl.depthMask(true);
     gl.enable(gl.CULL_FACE);
+    gl.uniform1f(p.u.uAlphaTest, 0.02);
+    this.drawEntities(p, state.entities, cam, false, true);
+    gl.depthMask(true);
 
     this.drawParticles(state, cam, v.skyLight, fogColor, fogRange, fovY, false);
     this.drawWeather(state, v.skyLight.map((c) => c * 0.9), false);
@@ -848,6 +853,16 @@ export class Renderer {
     gl.disable(gl.CULL_FACE);
     this.drawChunkList(wp, visible, cam, 'water');
     gl.enable(gl.CULL_FACE);
+    if (state.entities?.some((e) => e.parts.some((pt) => pt.translucent))) {
+      this.setFancyChunkUniforms(p, state, sky, fog, shadows);
+      gl.uniform1f(p.u.uAlphaTest, 0.02);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      this.drawEntities(p, state.entities, cam, false, true);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    }
 
     const partLight = sky.ambientSky.map((v, i) => v * 1.6 + sky.lightColor[i] * 0.6);
     this.drawParticles(state, cam, partLight, sky.horizon, fog.range, fovY, true);

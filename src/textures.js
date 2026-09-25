@@ -1016,8 +1016,30 @@ function smokeTex(t, rng) {
   });
 }
 
+// Effect particles, one 4x4 cell each: heart, two portal sparks, green
+// sparkle, angry cloud, crit star, slime and ink blobs.
+const FX_CELLS = [
+  [['X..X', 'XXXX', 'XXXX', '.XX.'], [220, 30, 40], [255, 120, 130]],
+  [['.X..', 'XXX.', '.XXX', '..X.'], [200, 90, 255], [240, 190, 255]],
+  [['....', '.XX.', '.XX.', '....'], [120, 40, 180], [170, 80, 230]],
+  [['.X..', 'XXX.', '.X.X', '...X'], [80, 220, 80], [200, 255, 170]],
+  [['.XX.', 'XXXX', 'XXXX', '.XX.'], [60, 60, 64], [110, 110, 116]],
+  [['X..X', '.XX.', '.XX.', 'X..X'], [255, 255, 220], [255, 230, 120]],
+  [['.XX.', 'XXXX', 'XXXX', '.XX.'], [100, 190, 80], [150, 230, 120]],
+  [['.XX.', 'XXXX', 'XXXX', '.XX.'], [20, 20, 30], [60, 60, 80]],
+];
+function fxTex(t, rng) {
+  t.fill((x, y) => {
+    const cell = FX_CELLS[(y >> 2) * 4 + (x >> 2)];
+    if (!cell || cell[0][y & 3][x & 3] !== 'X') { t.set(x, y, [0, 0, 0], 0); return; }
+    const hi = (x & 3) + (y & 3) < 3;
+    t.set(x, y, add(hi ? cell[2] : cell[1], (rng() - 0.5) * 12));
+  });
+}
+
 Object.assign(GENERATORS, {
   smoke: smokeTex,
+  fx: fxTex,
   lantern: lanternSide,
   lantern_top: lanternTop,
   lantern_item: lanternItem,
@@ -1069,6 +1091,17 @@ Object.assign(GENERATORS, {
   item_zombie_spawn_egg: (t, r) => eggSprite(t, r, [40, 140, 140], [80, 120, 60]),
   item_creeper_spawn_egg: (t, r) => eggSprite(t, r, [80, 176, 70], [20, 20, 20]),
   item_villager_spawn_egg: (t, r) => eggSprite(t, r, [100, 70, 50], [190, 150, 110]),
+  item_skeleton_spawn_egg: (t, r) => eggSprite(t, r, [196, 196, 196], [80, 80, 80]),
+  item_spider_spawn_egg: (t, r) => eggSprite(t, r, [54, 46, 40], [170, 20, 20]),
+  item_enderman_spawn_egg: (t, r) => eggSprite(t, r, [22, 22, 22], [10, 10, 10]),
+  item_slime_spawn_egg: (t, r) => eggSprite(t, r, [100, 190, 80], [60, 130, 50]),
+  item_wolf_spawn_egg: (t, r) => eggSprite(t, r, [214, 210, 206], [190, 160, 140]),
+  item_iron_golem_spawn_egg: (t, r) => eggSprite(t, r, [206, 200, 190], [110, 140, 90]),
+  item_squid_spawn_egg: (t, r) => eggSprite(t, r, [34, 60, 90], [100, 120, 150]),
+  item_bat_spawn_egg: (t, r) => eggSprite(t, r, [70, 56, 40], [20, 20, 20]),
+  item_rabbit_spawn_egg: (t, r) => eggSprite(t, r, [160, 120, 90], [100, 70, 50]),
+  item_raw_rabbit: (t, r) => meatSprite(t, r, [230, 170, 160], [250, 220, 214], false),
+  item_cooked_rabbit: (t, r) => meatSprite(t, r, [190, 120, 70], [220, 170, 110], true),
 });
 for (const tier of Object.keys(TIER_COLORS)) {
   GENERATORS[`item_${tier}_sword`] = (t) => swordSprite(t, tier);

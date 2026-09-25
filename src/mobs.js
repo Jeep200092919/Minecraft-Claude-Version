@@ -84,7 +84,7 @@ export const MOBS = {
     ],
   },
   villager: {
-    health: 20, width: 0.6, height: 1.95, speed: 1.0, passive: true, skin: 6, villager: true,
+    health: 20, width: 0.6, height: 1.95, speed: 1.0, passive: true, skin: 6, villager: true, xp: 0,
     drops: [], sound: 'villager',
     parts: [
       { kind: 'legL', box: [-4, 0, -2, 0, 12, 2], uv: [0, 20], pivot: [-2, 12, 0] },
@@ -93,6 +93,121 @@ export const MOBS = {
       { kind: 'head', box: [-4, 24, -4, 4, 34, 4], uv: [0, 0], pivot: [0, 24, 0] },
       { kind: 'head', box: [-1, 25, 4, 1, 29, 6], uv: [32, 0], pivot: [0, 24, 0] },
       { kind: 'static', box: [-6, 17, 3, 6, 21, 7], uv: [0, 40] },
+    ],
+  },
+  skeleton: {
+    health: 20, width: 0.6, height: 1.99, speed: 2.4, hostile: true, skin: 7, burnsInDay: true, ranged: true, attack: 3,
+    drops: [[I.BONE, 0, 2], [I.ARROW, 0, 2]], sound: 'skeleton', holds: I.BOW,
+    parts: [
+      { kind: 'legL', box: [-3, 0, -1, -1, 12, 1], uv: [0, 16], pivot: [-2, 12, 0] },
+      { kind: 'legR', box: [1, 0, -1, 3, 12, 1], uv: [0, 16], pivot: [2, 12, 0] },
+      { kind: 'body', box: [-4, 12, -2, 4, 24, 2], uv: [16, 16] },
+      { kind: 'head', box: [-4, 24, -4, 4, 32, 4], uv: [0, 0], pivot: [0, 24, 0] },
+      { kind: 'armL', box: [-6, 12, -1, -4, 24, 1], uv: [40, 16], pivot: [-5, 22, 0] },
+      { kind: 'armR', box: [4, 12, -1, 6, 24, 1], uv: [40, 16], pivot: [5, 22, 0] },
+    ],
+  },
+  spider: {
+    health: 16, width: 1.4, height: 0.9, speed: 3.2, hostile: true, skin: 8, climbs: true, neutralInDay: true, attack: 2,
+    drops: [[I.STRING, 0, 2], [I.SPIDER_EYE, 0, 1]], sound: 'spider',
+    parts: [
+      { kind: 'body', box: [-5, 4, -12, 5, 12, 0], uv: [0, 0] },
+      { kind: 'body', box: [-3, 5, 0, 3, 11, 6], uv: [32, 20] },
+      { kind: 'head', box: [-4, 4, 6, 4, 12, 14], uv: [0, 20], pivot: [0, 8, 6] },
+      ...[-1, 1].flatMap((side) => [0, 1, 2, 3].map((i) => ({
+        kind: `spiderLeg${i}${side < 0 ? 'L' : 'R'}`,
+        box: side < 0 ? [-18, 6, 3 - i * 2, -3, 8, 5 - i * 2] : [3, 6, 3 - i * 2, 18, 8, 5 - i * 2],
+        uv: [0, 36], uvBox: [15, 2, 2], pivot: [side * 3, 7, 4 - i * 2],
+      }))),
+    ],
+  },
+  enderman: {
+    health: 40, width: 0.6, height: 2.9, speed: 3.6, neutral: true, skin: 9, teleports: true, attack: 7,
+    drops: [[I.ENDER_PEARL, 0, 1]], sound: 'enderman',
+    parts: [
+      { kind: 'legL', box: [-3, 0, -1, -1, 30, 1], uv: [56, 0], pivot: [-2, 30, 0] },
+      { kind: 'legR', box: [1, 0, -1, 3, 30, 1], uv: [56, 0], pivot: [2, 30, 0] },
+      { kind: 'body', box: [-4, 30, -2, 4, 42, 2], uv: [32, 16] },
+      { kind: 'head', box: [-4, 42, -4, 4, 50, 4], uv: [0, 0], pivot: [0, 42, 0] },
+      { kind: 'armL', box: [-6, 12, -1, -4, 42, 1], uv: [56, 0], pivot: [-5, 40, 0] },
+      { kind: 'armR', box: [4, 12, -1, 6, 42, 1], uv: [56, 0], pivot: [5, 40, 0] },
+    ],
+  },
+  slime: {
+    health: 16, width: 0.52, height: 0.52, speed: 2.2, hostile: true, skin: 10, hops: true, attack: 4, sizes: true,
+    drops: [], sound: 'slime',
+    parts: [
+      { kind: 'body', box: [-3, 1, -3, 3, 7, 3], uv: [0, 16] },
+      { kind: 'body', box: [-2, 4, 3, 0, 6, 4], uv: [32, 0], uvBox: [2, 2, 1] },
+      { kind: 'body', box: [0, 4, 3, 2, 6, 4], uv: [32, 4], uvBox: [2, 2, 1] },
+      { kind: 'body', box: [-4, 0, -4, 4, 8, 4], uv: [0, 0], translucent: true },
+    ],
+  },
+  wolf: {
+    health: 8, width: 0.6, height: 0.85, speed: 3.0, neutral: true, skin: 11, tameSkin: 16, tameable: true, attack: 4,
+    drops: [], sound: 'wolf',
+    parts: [
+      { kind: 'body', box: [-3, 6, -6, 3, 12, 3], uv: [18, 14] },
+      { kind: 'body', box: [-4, 6, 1, 4, 13, 7], uv: [21, 0] },
+      { kind: 'head', box: [-3, 7, 7, 3, 13, 11], uv: [0, 0], pivot: [0, 10, 7] },
+      { kind: 'head', box: [-1, 7, 11, 1, 10, 14], uv: [0, 10], pivot: [0, 10, 7], uvBox: [2, 3, 3] },
+      { kind: 'head', box: [-3, 13, 8, -1, 15, 9], uv: [50, 0], uvBox: [2, 2, 1], pivot: [0, 10, 7] },
+      { kind: 'head', box: [1, 13, 8, 3, 15, 9], uv: [50, 0], uvBox: [2, 2, 1], pivot: [0, 10, 7] },
+      { kind: 'legFL', box: [-3, 0, 2, -1, 8, 4], uv: [0, 18], pivot: [-2, 8, 3] },
+      { kind: 'legFR', box: [1, 0, 2, 3, 8, 4], uv: [0, 18], pivot: [2, 8, 3] },
+      { kind: 'legBL', box: [-3, 0, -5, -1, 8, -3], uv: [0, 18], pivot: [-2, 8, -4] },
+      { kind: 'legBR', box: [1, 0, -5, 3, 8, -3], uv: [0, 18], pivot: [2, 8, -4] },
+      { kind: 'tail', box: [-1, 4, -8, 1, 12, -6], uv: [9, 18], pivot: [0, 11, -6] },
+    ],
+  },
+  iron_golem: {
+    health: 100, width: 1.4, height: 2.7, speed: 1.6, neutral: true, skin: 12, defender: true, attack: 12, xp: 0,
+    drops: [[I.IRON_INGOT, 3, 5], [28, 0, 2]], sound: 'golem',
+    parts: [
+      { kind: 'legL', box: [-7, 0, -3, -1, 16, 2], uv: [0, 41], pivot: [-4, 16, 0] },
+      { kind: 'legR', box: [1, 0, -3, 7, 16, 2], uv: [0, 41], pivot: [4, 16, 0] },
+      { kind: 'body', box: [-9, 16, -5, 9, 28, 6], uv: [0, 0] },
+      { kind: 'body', box: [-5, 12, -3, 5, 18, 3], uv: [0, 0], uvBox: [9, 5, 6] },
+      { kind: 'head', box: [-4, 28, -3, 4, 38, 5], uv: [0, 23], pivot: [0, 28, 0] },
+      { kind: 'head', box: [-1, 29, 5, 1, 33, 7], uv: [52, 23], uvBox: [2, 4, 2], pivot: [0, 28, 0] },
+      { kind: 'armL', box: [-13, 0, -3, -9, 28, 3], uv: [32, 23], uvBox: [4, 30, 6], pivot: [-11, 26, 0] },
+      { kind: 'armR', box: [9, 0, -3, 13, 28, 3], uv: [32, 23], uvBox: [4, 30, 6], pivot: [11, 26, 0] },
+    ],
+  },
+  squid: {
+    health: 10, width: 0.8, height: 0.8, speed: 1.2, passive: true, skin: 13, swims: true,
+    drops: [[I.INK_SAC, 1, 3]], sound: 'squid',
+    parts: [
+      { kind: 'body', box: [-6, 8, -6, 6, 24, 6], uv: [0, 0] },
+      ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const a = (i / 8) * Math.PI * 2;
+        const x = Math.round(Math.cos(a) * 5), z = Math.round(Math.sin(a) * 5);
+        return { kind: 'tentacle', box: [x - 1, -10, z - 1, x + 1, 8, z + 1], uv: [48, 0], pivot: [x, 8, z], angle: a };
+      }),
+    ],
+  },
+  bat: {
+    health: 6, width: 0.5, height: 0.9, speed: 4, passive: true, skin: 14, flies: true, xp: 0, scale: 0.55,
+    drops: [], sound: 'bat',
+    parts: [
+      { kind: 'head', box: [-3, 8, -3, 3, 14, 3], uv: [0, 0] },
+      { kind: 'body', box: [-3, 0, -2, 3, 8, 1], uv: [0, 16], uvBox: [6, 8, 3] },
+      { kind: 'batWingL', box: [-13, -2, 0, -3, 12, 1], uv: [24, 0], uvBox: [10, 14, 1], pivot: [-3, 10, 0] },
+      { kind: 'batWingR', box: [3, -2, 0, 13, 12, 1], uv: [24, 0], uvBox: [10, 14, 1], pivot: [3, 10, 0] },
+    ],
+  },
+  rabbit: {
+    health: 3, width: 0.4, height: 0.5, speed: 2.4, passive: true, skin: 15, hops: true,
+    drops: [[I.RAW_RABBIT, 0, 1]], sound: 'rabbit',
+    parts: [
+      { kind: 'body', box: [-3, 2, -5, 3, 7, 3], uv: [0, 16] },
+      { kind: 'head', box: [-2, 5, 2, 2, 9, 7], uv: [0, 0], pivot: [0, 6, 3], uvBox: [4, 4, 5] },
+      { kind: 'head', box: [-2, 9, 3, -1, 14, 4], uv: [24, 0], uvBox: [1, 5, 1], pivot: [0, 6, 3] },
+      { kind: 'head', box: [1, 9, 3, 2, 14, 4], uv: [24, 0], uvBox: [1, 5, 1], pivot: [0, 6, 3] },
+      { kind: 'legBL', box: [-3, 0, -5, -1, 3, 0], uv: [30, 0], pivot: [-2, 3, -3] },
+      { kind: 'legBR', box: [1, 0, -5, 3, 3, 0], uv: [30, 0], pivot: [2, 3, -3] },
+      { kind: 'legFL', box: [-3, 0, 1, -1, 3, 3], uv: [30, 10], uvBox: [2, 3, 2], pivot: [-2, 3, 2] },
+      { kind: 'legFR', box: [1, 0, 1, 3, 3, 3], uv: [30, 10], uvBox: [2, 3, 2], pivot: [2, 3, 2] },
     ],
   },
 };
@@ -116,6 +231,15 @@ export const SPAWN_EGGS = {
   [I.ZOMBIE_SPAWN_EGG]: 'zombie',
   [I.CREEPER_SPAWN_EGG]: 'creeper',
   [I.VILLAGER_SPAWN_EGG]: 'villager',
+  [I.SKELETON_SPAWN_EGG]: 'skeleton',
+  [I.SPIDER_SPAWN_EGG]: 'spider',
+  [I.ENDERMAN_SPAWN_EGG]: 'enderman',
+  [I.SLIME_SPAWN_EGG]: 'slime',
+  [I.WOLF_SPAWN_EGG]: 'wolf',
+  [I.IRON_GOLEM_SPAWN_EGG]: 'iron_golem',
+  [I.SQUID_SPAWN_EGG]: 'squid',
+  [I.BAT_SPAWN_EGG]: 'bat',
+  [I.RABBIT_SPAWN_EGG]: 'rabbit',
 };
 
 // Texture rectangles of a box laid out Minecraft-style: [u, v, w, h] per face,
@@ -198,7 +322,7 @@ class Skin {
     if (x < 0 || y < 0 || x >= SKIN || y >= SKIN) return;
     const i = (y * SKIN + x) * 4;
     if (!c) { this.data[i + 3] = 0; return; }
-    this.data[i] = c[0]; this.data[i + 1] = c[1]; this.data[i + 2] = c[2]; this.data[i + 3] = 255;
+    this.data[i] = c[0]; this.data[i + 1] = c[1]; this.data[i + 2] = c[2]; this.data[i + 3] = c[3] ?? 255;
   }
   get(x, y) {
     const i = (y * SKIN + x) * 4;
@@ -210,7 +334,7 @@ class Skin {
       for (let x = u; x < u + w; x++) {
         const n = (this.rng() - 0.5) * noise;
         const c = typeof color === 'function' ? color(x - u, y - v, w, h, x, y) : color;
-        this.set(x, y, c && [c[0] + n, c[1] + n, c[2] + n]);
+        this.set(x, y, c && [c[0] + n, c[1] + n, c[2] + n, c[3]]);
       }
     }
   }
@@ -404,6 +528,157 @@ function paintVillager() {
   return s;
 }
 
+function paintSkeleton() {
+  const s = new Skin('skeleton');
+  const bone = mottle(140, 2, [222, 222, 214], [190, 190, 184], 0.6);
+  s.box(0, 0, 8, 8, 8, (fc, x, y, w, h, sx, sy) => bone(sx, sy), 6);
+  const f = s.face(0, 0, 8, 8, 8, FRONT);
+  const dark = [30, 30, 30];
+  s.rect([f[0] + 1, f[1] + 3, 2, 2], dark, 0);
+  s.rect([f[0] + 5, f[1] + 3, 2, 2], dark, 0);
+  s.px(f, 3, 5, dark); s.px(f, 4, 5, [70, 70, 70]);
+  for (let x = 1; x < 7; x++) s.px(f, x, 6, x % 2 ? [60, 60, 60] : [200, 200, 194]);
+  // Rib cage: spine and ribs, gaps are see-through.
+  s.box(16, 16, 8, 12, 4, (fc, x, y, w, h, sx, sy) => {
+    if (fc === FRONT || fc === 5) {
+      if (x === 3 || x === 4) return bone(sx, sy);
+      if (y < 8 && y % 2 === 0) return bone(sx, sy);
+      return y >= 9 && y <= 10 ? bone(sx, sy) : null;
+    }
+    if (fc === TOP || fc === BOTTOM) return bone(sx, sy);
+    return y < 8 && y % 2 === 0 ? bone(sx, sy) : null;
+  }, 4);
+  s.box(40, 16, 2, 12, 2, (fc, x, y, w, h, sx, sy) => bone(sx, sy), 6);
+  s.box(0, 16, 2, 12, 2, (fc, x, y, w, h, sx, sy) => bone(sx, sy), 6);
+  return s;
+}
+
+function paintSpider() {
+  const s = new Skin('spider');
+  const hide = mottle(150, 2, [60, 50, 44], [36, 30, 26], 0.8);
+  s.box(0, 0, 10, 8, 12, (fc, x, y, w, h, sx, sy) => {
+    // Lighter markings on the back of the abdomen.
+    if (fc === TOP && (x === 4 || x === 5) && y % 3 !== 0) return [110, 90, 70];
+    return hide(sx, sy);
+  }, 8);
+  s.box(32, 20, 6, 6, 6, (fc, x, y, w, h, sx, sy) => hide(sx, sy), 8);
+  s.box(0, 20, 8, 8, 8, (fc, x, y, w, h, sx, sy) => hide(sx, sy), 8);
+  const f = s.face(0, 20, 8, 8, 8, FRONT);
+  const red = [220, 20, 20], dim = [150, 10, 10];
+  s.rect([f[0] + 1, f[1] + 3, 2, 2], red, 0); s.rect([f[0] + 5, f[1] + 3, 2, 2], red, 0);
+  s.px(f, 3, 2, dim); s.px(f, 4, 2, dim); s.px(f, 2, 1, dim); s.px(f, 5, 1, dim);
+  s.box(0, 36, 15, 2, 2, (fc, x, y, w, h, sx, sy) => (x % 5 === 0 ? [80, 66, 56] : hide(sx, sy)), 6);
+  return s;
+}
+
+function paintEnderman() {
+  const s = new Skin('enderman');
+  const black = mottle(160, 2, [24, 22, 28], [12, 12, 16], 0.8);
+  const fn = (fc, x, y, w, h, sx, sy) => black(sx, sy);
+  s.box(0, 0, 8, 8, 8, fn, 4);
+  const f = s.face(0, 0, 8, 8, 8, FRONT);
+  const eye = [224, 121, 250], glow = [250, 200, 255];
+  s.rect([f[0], f[1] + 4, 3, 1], eye, 0); s.rect([f[0] + 5, f[1] + 4, 3, 1], eye, 0);
+  s.px(f, 1, 4, glow); s.px(f, 6, 4, glow);
+  s.box(32, 16, 8, 12, 4, fn, 4);
+  s.box(56, 0, 2, 30, 2, fn, 4);
+  return s;
+}
+
+function paintSlime() {
+  const s = new Skin('slime');
+  const inner = mottle(170, 2, [96, 180, 76], [76, 150, 60], 0.7);
+  // Outer gel: a rim on each face, clear in the middle.
+  // Outer gel: see-through, a little denser along the edges.
+  s.box(0, 0, 8, 8, 8, (fc, x, y, w, h) => (x === 0 || y === 0 || x === w - 1 || y === h - 1 ? [120, 200, 100, 190] : [110, 190, 90, 120]), 6);
+  s.box(0, 16, 6, 6, 6, (fc, x, y, w, h, sx, sy) => inner(sx, sy), 6);
+  s.box(32, 0, 2, 2, 1, [20, 30, 20], 0);
+  s.box(32, 4, 2, 2, 1, [20, 30, 20], 0);
+  const f = s.face(0, 16, 6, 6, 6, FRONT);
+  s.px(f, 3, 4, [40, 70, 36]);
+  return s;
+}
+
+function paintWolf(tame = false) {
+  const s = new Skin(tame ? 'wolf_tame' : 'wolf');
+  const fur = mottle(180, 2, [216, 212, 206], [186, 180, 174], 0.8);
+  const back = [150, 144, 140];
+  const fn = (fc, x, y, w, h, sx, sy) => (fc === TOP ? mixc(fur(sx, sy), back, 0.4) : fur(sx, sy));
+  s.box(0, 0, 6, 6, 4, fn, 4);
+  const f = s.face(0, 0, 6, 6, 4, FRONT);
+  s.px(f, 1, 2, [20, 20, 20]); s.px(f, 4, 2, [20, 20, 20]);
+  s.box(0, 10, 2, 3, 3, (fc, x, y) => (fc === FRONT && y === 0 ? [30, 30, 30] : [230, 226, 220]), 4);
+  s.box(50, 0, 2, 2, 1, [170, 160, 156], 4);
+  // Mane; a tamed wolf wears a red collar around its front edge.
+  const collar = (fc, x, y, w, h) => (fc === 0 && x === 1) || (fc === 1 && x === w - 2) || (fc === 2 && y === h - 2) || (fc === 3 && y === 1);
+  s.box(21, 0, 8, 7, 6, (fc, x, y, w, h, sx, sy) => (tame && collar(fc, x, y, w, h) ? [186, 32, 32] : fn(fc, x, y, w, h, sx, sy)), 6);
+  s.box(18, 14, 6, 6, 9, fn, 6);
+  s.box(0, 18, 2, 8, 2, fur, 6);
+  s.box(9, 18, 2, 8, 2, (fc, x, y, w, h, sx, sy) => (y > 5 ? [236, 234, 230] : fur(sx, sy)), 6);
+  return s;
+}
+
+function paintIronGolem() {
+  const s = new Skin('iron_golem');
+  const iron = mottle(190, 3, [206, 200, 190], [176, 168, 158], 0.8);
+  const vines = valueNoise(191, 3);
+  const fn = (fc, x, y, w, h, sx, sy) => (vines(sx, sy) > 0.8 ? [80, 120, 50] : iron(sx, sy));
+  s.box(0, 0, 18, 12, 11, fn, 8);
+  s.box(0, 23, 8, 10, 8, (fc, x, y, w, h, sx, sy) => iron(sx, sy), 6);
+  const f = s.face(0, 23, 8, 10, 8, FRONT);
+  s.rect([f[0] + 1, f[1] + 3, 6, 1], [120, 110, 100], 0);
+  s.px(f, 2, 4, [150, 30, 30]); s.px(f, 5, 4, [150, 30, 30]);
+  s.box(52, 23, 2, 4, 2, [196, 188, 178], 4);
+  s.box(32, 23, 4, 30, 6, fn, 8);
+  s.box(0, 41, 6, 16, 5, fn, 8);
+  return s;
+}
+
+function paintSquid() {
+  const s = new Skin('squid');
+  const skin = mottle(200, 3, [36, 62, 96], [26, 46, 74], 0.8);
+  s.box(0, 0, 12, 16, 12, (fc, x, y, w, h, sx, sy) => skin(sx, sy), 6);
+  for (const fc of [0, 1]) {
+    const r = s.face(0, 0, 12, 16, 12, fc);
+    s.rect([r[0] + 4, r[1] + 10, 3, 3], [230, 230, 220], 0);
+    s.rect([r[0] + 5, r[1] + 11, 1, 1], [10, 10, 10], 0);
+  }
+  s.box(48, 0, 2, 18, 2, (fc, x, y, w, h, sx, sy) => mixc(skin(sx, sy), [120, 140, 170], y / 30), 6);
+  return s;
+}
+
+function paintBat() {
+  const s = new Skin('bat');
+  const fur = mottle(210, 2, [76, 60, 44], [56, 44, 32], 0.8);
+  s.box(0, 0, 6, 6, 6, (fc, x, y, w, h, sx, sy) => fur(sx, sy), 6);
+  const f = s.face(0, 0, 6, 6, 6, FRONT);
+  s.px(f, 1, 2, [10, 10, 10]); s.px(f, 4, 2, [10, 10, 10]);
+  s.box(0, 16, 6, 8, 3, (fc, x, y, w, h, sx, sy) => fur(sx, sy), 6);
+  // Wing membrane with finger bones and a scalloped trailing edge.
+  s.box(24, 0, 10, 14, 1, (fc, x, y, w, h) => {
+    if (fc === 4 || fc === 5) {
+      const edge = h - 1 - Math.round(4 * Math.sin((x / w) * Math.PI * 1.5) ** 2);
+      if (y > edge) return null;
+      if (y < 2 || x % 3 === 0 && y < edge - 1) return [58, 46, 36];
+    }
+    return [34, 27, 22];
+  }, 4);
+  return s;
+}
+
+function paintRabbit() {
+  const s = new Skin('rabbit');
+  const fur = mottle(220, 2, [156, 116, 84], [128, 94, 66], 0.8);
+  s.box(0, 0, 4, 4, 5, (fc, x, y, w, h, sx, sy) => fur(sx, sy), 5);
+  const f = s.face(0, 0, 4, 4, 5, FRONT);
+  s.px(f, 0, 1, [20, 20, 20]); s.px(f, 3, 1, [20, 20, 20]); s.px(f, 1, 3, [220, 170, 170]); s.px(f, 2, 3, [220, 170, 170]);
+  s.box(24, 0, 1, 5, 1, (fc, x, y) => (y < 2 ? [120, 88, 62] : [226, 180, 170]), 4);
+  s.box(0, 16, 6, 5, 8, (fc, x, y, w, h, sx, sy) => (fc === BOTTOM ? [226, 214, 196] : fur(sx, sy)), 5);
+  s.box(30, 0, 2, 3, 5, fur, 5);
+  s.box(30, 10, 2, 3, 2, fur, 5);
+  return s;
+}
+
 // The player character: an original explorer in a few colour variants.
 export const PLAYER_COLORS = [
   { shirt: [60, 160, 80], pants: [96, 70, 44], hair: [200, 160, 80] },
@@ -464,7 +739,9 @@ function paintArmor(material) {
 }
 export const ARMOR_MATERIAL_LIST = ['leather', 'iron', 'golden', 'diamond'];
 
-const MOB_PAINTERS = [paintPig, paintCow, paintSheep, paintChicken, paintZombie, paintCreeper, paintVillager];
+const MOB_PAINTERS = [paintPig, paintCow, paintSheep, paintChicken, paintZombie, paintCreeper, paintVillager,
+  paintSkeleton, paintSpider, paintEnderman, paintSlime, () => paintWolf(), paintIronGolem, paintSquid, paintBat, paintRabbit,
+  () => paintWolf(true)];
 export const PLAYER_SKIN_BASE = MOB_PAINTERS.length;
 export const ARMOR_SKIN_BASE = PLAYER_SKIN_BASE + PLAYER_COLORS.length;
 

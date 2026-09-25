@@ -465,6 +465,7 @@ export const ITEM_ART = {
     '.orrrrrrrrrrrro.', '.oRRRRRRRRRRRRo.', '.opppppppppppo..', '.op..........po.',
     '................', '................', '................', '................',
   ], { w: [236, 236, 230], r: [180, 36, 34], R: [140, 26, 26], o: [60, 20, 20], p: [140, 104, 60] }),
+  ink_sac: templateArt(ORB, pal([8, 8, 12], [20, 20, 30], [36, 36, 48], [60, 60, 80], [110, 110, 140])),
   water_bucket: bucketArt([60, 100, 230]),
   lava_bucket: bucketArt([240, 120, 20]),
   milk_bucket: bucketArt([246, 246, 246]),
