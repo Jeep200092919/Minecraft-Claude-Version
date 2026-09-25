@@ -1,0 +1,14 @@
+{
+  "name": "claudecraft",
+  "version": "1.0.0",
+  "description": "A Minecraft-inspired voxel sandbox game written from scratch in vanilla JavaScript and WebGL2, with zero dependencies and fully procedural assets.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "build": "node tools/build.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "smoke": "node tools/smoke.mjs",
+    "package": "node tools/package.mjs"
+  }
+}

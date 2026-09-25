@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClaudeCraft</title>
+  <meta name="description" content="A Minecraft-inspired voxel sandbox written from scratch in JavaScript and WebGL2.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game" tabindex="0"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="crosshair"></div>
+    <div id="tint"></div>
+    <div id="hurt"></div>
+    <pre id="debug" class="hidden"></pre>
+    <div id="toast"></div>
+    <div id="bottom">
+      <div id="item-name"></div>
+      <div id="bars">
+        <div id="hearts"></div>
+        <div id="bubbles"></div>
+      </div>
+      <div id="hotbar"></div>
+    </div>
+  </div>
+
+  <section id="screen-title" class="screen title-screen">
+    <h1 class="logo">CLAUDECRAFT</h1>
+    <p class="splash">Made from scratch!</p>
+    <div class="menu">
+      <button data-action="singleplayer">Singleplayer</button>
+      <button data-action="controls">Controls</button>
+      <button data-action="options-title">Options…</button>
+    </div>
+    <p class="footer">A Minecraft-inspired voxel sandbox · zero dependencies · WebGL2</p>
+  </section>
+
+  <section id="screen-worlds" class="screen dirt">
+    <h2>Select World</h2>
+    <ul id="world-list"></ul>
+    <p id="no-worlds" class="hint">No worlds yet. Create one!</p>
+    <div class="menu wide">
+      <div class="row">
+        <button data-action="play-selected" id="btn-play" disabled>Play Selected World</button>
+        <button data-action="create-world">Create New World</button>
+      </div>
+      <div class="row">
+        <button data-action="delete-world" id="btn-delete" disabled>Delete</button>
+        <button data-action="back-title">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-create" class="screen dirt">
+    <h2>Create New World</h2>
+    <form id="create-form" class="menu" autocomplete="off">
+      <label>World Name<input id="world-name" maxlength="32" value="New World"></label>
+      <label>Seed (leave blank for random)<input id="world-seed" maxlength="40" placeholder="random"></label>
+      <button type="button" id="btn-mode" data-mode="survival">Game Mode: Survival</button>
+      <p class="hint" id="mode-hint">Gather resources, craft tools, survive falls, lava and drowning.</p>
+      <div class="row">
+        <button type="submit">Create New World</button>
+        <button type="button" data-action="back-worlds">Cancel</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="screen-loading" class="screen dirt">
+    <h2 id="loading-title">Generating world</h2>
+    <div class="progress"><div id="loading-bar"></div></div>
+    <p class="hint" id="loading-detail">Building terrain…</p>
+  </section>
+
+  <section id="screen-pause" class="screen dim">
+    <h2>Game Menu</h2>
+    <div class="menu">
+      <button data-action="resume">Back to Game</button>
+      <button data-action="options-game">Options…</button>
+      <button data-action="controls-game">Controls</button>
+      <button data-action="save-quit">Save and Quit to Title</button>
+    </div>
+  </section>
+
+  <section id="screen-options" class="screen dim">
+    <h2>Options</h2>
+    <div class="menu wide options">
+      <label class="slider">Render Distance: <span id="opt-rd-val"></span><input type="range" id="opt-rd" min="2" max="16" step="1"></label>
+      <label class="slider">FOV: <span id="opt-fov-val"></span><input type="range" id="opt-fov" min="50" max="110" step="1"></label>
+      <label class="slider">Mouse Sensitivity: <span id="opt-sens-val"></span><input type="range" id="opt-sens" min="10" max="300" step="5"></label>
+      <label class="slider">Volume: <span id="opt-vol-val"></span><input type="range" id="opt-vol" min="0" max="100" step="5"></label>
+      <div class="row">
+        <button type="button" id="opt-bob">View Bobbing: ON</button>
+        <button type="button" id="opt-invert">Invert Mouse: OFF</button>
+      </div>
+      <button data-action="options-done">Done</button>
+    </div>
+  </section>
+
+  <section id="screen-controls" class="screen dim">
+    <h2>Controls</h2>
+    <div class="controls">
+      <dl>
+        <dt>W A S D</dt><dd>Move</dd>
+        <dt>Mouse</dt><dd>Look around</dd>
+        <dt>Space</dt><dd>Jump / swim up / fly up</dd>
+        <dt>Shift</dt><dd>Sneak (won't fall off edges) / fly down</dd>
+        <dt>Ctrl or double-tap W</dt><dd>Sprint</dd>
+        <dt>Double-tap Space</dt><dd>Toggle flying (Creative)</dd>
+        <dt>Left click</dt><dd>Break block (hold in Survival)</dd>
+        <dt>Right click</dt><dd>Place block / use crafting table</dd>
+        <dt>Middle click</dt><dd>Pick block</dd>
+        <dt>1–9 / wheel</dt><dd>Select hotbar slot</dd>
+        <dt>E</dt><dd>Inventory &amp; crafting</dd>
+        <dt>F3</dt><dd>Debug info</dd>
+        <dt>F1</dt><dd>Hide HUD</dd>
+        <dt>Esc</dt><dd>Pause menu</dd>
+      </dl>
+      <p class="hint">Inventory: left click picks up / places a stack, right click splits / places one, shift-click moves quickly.</p>
+    </div>
+    <div class="menu"><button data-action="controls-done">Done</button></div>
+  </section>
+
+  <section id="screen-death" class="screen death">
+    <h2>You Died!</h2>
+    <div class="menu">
+      <button data-action="respawn">Respawn</button>
+      <button data-action="save-quit">Title Screen</button>
+    </div>
+  </section>
+
+  <section id="screen-resume" class="screen dim clickable">
+    <h2>Click to continue</h2>
+    <p class="hint">Your mouse controls the camera while playing. Press Esc to pause.</p>
+  </section>
+
+  <section id="screen-inventory" class="screen dim">
+    <div id="inventory-panel" class="panel"></div>
+  </section>
+
+  <section id="screen-error" class="screen dirt">
+    <h2>Something went wrong</h2>
+    <p class="hint" id="error-text"></p>
+  </section>
+
+  <div id="cursor-stack"></div>
+  <div id="tooltip"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

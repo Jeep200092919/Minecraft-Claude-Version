@@ -1,0 +1,360 @@
+// Converts chunk block data into compact vertex buffers.
+//
+// Vertex layout (16 bytes):
+//   int16  x, y, z      position in 1/16 block units, chunk-local
+//   uint8  u, v         texture coords in 1/16 units
+//   uint8  layer        texture array layer
+//   uint8  sky, block   light levels * 16 (0..240)
+//   uint8  shade        ambient occlusion * face shading (0..255)
+//   uint8  flags        1 = liquid surface wave, 2 = foliage sway
+//   uint8  pad[3]
+import { CHUNK_SIZE, CHUNK_HEIGHT } from './constants.js';
+import { B, BLOCKS, IS_OPAQUE } from './blocks.js';
+import { generateTextures } from './textures.js';
+
+export const VERTEX_BYTES = 16;
+export const FLAG_WAVE = 1;
+export const FLAG_SWAY = 2;
+
+const PW = CHUNK_SIZE + 2; // padded width
+const PH = CHUNK_HEIGHT + 2; // padded height
+const PLANE = PW * PW;
+
+const pidx = (x, y, z) => ((y + 1) * PW + (z + 1)) * PW + (x + 1);
+const pdelta = (dx, dy, dz) => dx + dz * PW + dy * PLANE;
+
+// Faces: normal, U and V axes (cross(U, V) = normal so quads wind CCW when
+// seen from outside), and the base corner of the unit cube.
+const FACES = [
+  { n: [1, 0, 0], u: [0, 0, -1], v: [0, 1, 0], base: [1, 0, 1], shade: 0.6 },
+  { n: [-1, 0, 0], u: [0, 0, 1], v: [0, 1, 0], base: [0, 0, 0], shade: 0.6 },
+  { n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, -1], base: [0, 1, 1], shade: 1.0 },
+  { n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1], base: [0, 0, 0], shade: 0.5 },
+  { n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0], base: [0, 0, 1], shade: 0.8 },
+  { n: [0, 0, -1], u: [-1, 0, 0], v: [0, 1, 0], base: [1, 0, 0], shade: 0.8 },
+];
+const CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
+const AO_CURVE = [0.42, 0.6, 0.8, 1.0];
+
+for (const f of FACES) {
+  f.delta = pdelta(...f.n);
+  f.du = pdelta(...f.u);
+  f.dv = pdelta(...f.v);
+  // Corner positions of the unit face.
+  f.corners = CORNERS.map(([cu, cv]) => [
+    f.base[0] + f.u[0] * cu + f.v[0] * cv,
+    f.base[1] + f.u[1] * cu + f.v[1] * cv,
+    f.base[2] + f.u[2] * cu + f.v[2] * cv,
+  ]);
+}
+
+let faceLayers = null;
+let texIndex = null;
+function initLayers() {
+  if (faceLayers) return;
+  const tex = generateTextures();
+  texIndex = tex.index;
+  faceLayers = new Uint8Array(256 * 6);
+  for (let id = 0; id < 256; id++) {
+    const faces = BLOCKS[id].faces;
+    if (!faces) continue;
+    for (let f = 0; f < 6; f++) {
+      const layer = tex.index.get(faces[f]);
+      if (layer === undefined) throw new Error(`Missing texture ${faces[f]}`);
+      faceLayers[id * 6 + f] = layer;
+    }
+  }
+}
+
+export function textureLayer(name) {
+  initLayers();
+  return texIndex.get(name);
+}
+
+export function blockFaceLayer(id, face) {
+  initLayers();
+  return faceLayers[id * 6 + face];
+}
+
+// Growable vertex buffer.
+export class MeshBuilder {
+  constructor(initialVerts = 4096) {
+    this._alloc(initialVerts);
+    this.count = 0;
+  }
+  _alloc(verts) {
+    const buf = new ArrayBuffer(verts * VERTEX_BYTES);
+    if (this.u8) new Uint8Array(buf).set(this.u8.subarray(0, this.count * VERTEX_BYTES));
+    this.u8 = new Uint8Array(buf);
+    this.i16 = new Int16Array(buf);
+    this.capacity = verts;
+  }
+  reset() {
+    this.count = 0;
+  }
+  vertex(x, y, z, u, v, layer, sky, blk, shade, flags) {
+    if (this.count >= this.capacity) this._alloc(this.capacity * 2);
+    const i = this.count++;
+    const s = i * 8;
+    this.i16[s] = x;
+    this.i16[s + 1] = y;
+    this.i16[s + 2] = z;
+    const b = i * VERTEX_BYTES;
+    this.u8[b + 6] = u;
+    this.u8[b + 7] = v;
+    this.u8[b + 8] = layer;
+    this.u8[b + 9] = sky;
+    this.u8[b + 10] = blk;
+    this.u8[b + 11] = shade;
+    this.u8[b + 12] = flags;
+  }
+  get quads() {
+    return this.count >> 2;
+  }
+  result() {
+    return this.u8.slice(0, this.count * VERTEX_BYTES);
+  }
+}
+
+const solid = new MeshBuilder(1 << 15);
+const liquid = new MeshBuilder(1 << 12);
+const padBlocks = new Uint8Array(PW * PW * PH);
+const padLight = new Uint8Array(PW * PW * PH);
+
+// Copies the chunk plus a 1-block border from its neighbours.
+function gatherPadded(world, chunk) {
+  padBlocks.fill(0);
+  padLight.fill(0);
+  // Below the world: opaque. Above: open sky.
+  for (let i = 0; i < PLANE; i++) {
+    padBlocks[i] = B.BEDROCK;
+    padLight[(PH - 1) * PLANE + i] = 0xf0;
+  }
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const c = world.getChunk(chunk.cx + dx, chunk.cz + dz);
+      if (!c) continue;
+      const x0 = dx === -1 ? 15 : 0, x1 = dx === 1 ? 0 : 15;
+      const z0 = dz === -1 ? 15 : 0, z1 = dz === 1 ? 0 : 15;
+      for (let y = 0; y < CHUNK_HEIGHT; y++) {
+        for (let z = z0; z <= z1; z++) {
+          const pz = z + dz * 16;
+          let src = (y << 8) | (z << 4) | x0;
+          let dst = pidx(x0 + dx * 16, y, pz);
+          for (let x = x0; x <= x1; x++, src++, dst++) {
+            padBlocks[dst] = c.blocks[src];
+            padLight[dst] = c.light[src];
+          }
+        }
+      }
+    }
+  }
+}
+
+function shouldDrawFace(id, nid) {
+  if (IS_OPAQUE[nid]) return false;
+  if (nid === id && BLOCKS[id].cullSame) return false;
+  return true;
+}
+
+const AO = new Int32Array(4);
+const SKYV = new Int32Array(4);
+const BLKV = new Int32Array(4);
+
+// Emits one full cube face with smooth lighting and ambient occlusion.
+function emitCubeFace(mb, f, x, y, z, pc, layer, topHeight = 16, flags = 0) {
+  const face = FACES[f];
+  const front = pc + face.delta;
+  const ao = AO, sky = SKYV, blk = BLKV;
+  for (let c = 0; c < 4; c++) {
+    const [cu, cv] = CORNERS[c];
+    const su = cu ? face.du : -face.du;
+    const sv = cv ? face.dv : -face.dv;
+    const s1 = front + su, s2 = front + sv, sc = front + su + sv;
+    const o1 = IS_OPAQUE[padBlocks[s1]], o2 = IS_OPAQUE[padBlocks[s2]], oc = IS_OPAQUE[padBlocks[sc]];
+    ao[c] = o1 && o2 ? 0 : 3 - o1 - o2 - oc;
+    let l = padLight[front];
+    let s = l >> 4, b = l & 15, n = 1;
+    if (!o1) { l = padLight[s1]; s += l >> 4; b += l & 15; n++; }
+    if (!o2) { l = padLight[s2]; s += l >> 4; b += l & 15; n++; }
+    if (!oc && !(o1 && o2)) { l = padLight[sc]; s += l >> 4; b += l & 15; n++; }
+    sky[c] = Math.round((s * 16) / n);
+    blk[c] = Math.round((b * 16) / n);
+  }
+  // Split the quad along the diagonal that keeps AO/light gradients smooth.
+  const flip = ao[0] * 64 + sky[0] + blk[0] + ao[2] * 64 + sky[2] + blk[2] <
+    ao[1] * 64 + sky[1] + blk[1] + ao[3] * 64 + sky[3] + blk[3];
+  for (let k = 0; k < 4; k++) {
+    const c = flip ? (k + 1) & 3 : k;
+    const p = face.corners[c];
+    const [cu, cv] = CORNERS[c];
+    const py = p[1] ? topHeight : 0;
+    mb.vertex(
+      (x + p[0]) * 16, y * 16 + py, (z + p[2]) * 16,
+      cu * 16, (1 - cv) * 16,
+      layer, sky[c], blk[c],
+      Math.round(face.shade * AO_CURVE[ao[c]] * 255),
+      p[1] && flags ? flags : 0,
+    );
+  }
+}
+
+// Emits the faces of an arbitrary box (in 1/16 units) with flat lighting.
+// `transform` optionally remaps vertex positions (used for wall torches).
+function emitBox(mb, x, y, z, box, layers, sky, blk, faceMask = 63, transform = null, uvOverride = null) {
+  const [x0, y0, z0, x1, y1, z1] = box;
+  for (let f = 0; f < 6; f++) {
+    if (!(faceMask & (1 << f))) continue;
+    const face = FACES[f];
+    for (let k = 0; k < 4; k++) {
+      const c = face.corners[k];
+      let px = c[0] ? x1 : x0, py = c[1] ? y1 : y0, pz = c[2] ? z1 : z0;
+      // UVs from the box's projection onto the face (Minecraft-style).
+      const du = face.u[0] * px + face.u[1] * py + face.u[2] * pz + (face.u[0] + face.u[1] + face.u[2] < 0 ? 16 : 0);
+      const dv = face.v[0] * px + face.v[1] * py + face.v[2] * pz + (face.v[0] + face.v[1] + face.v[2] < 0 ? 16 : 0);
+      let u = du, v = 16 - dv;
+      if (uvOverride && uvOverride[f]) [u, v] = uvOverride[f](u, v);
+      if (transform) [px, py, pz] = transform(px, py, pz);
+      mb.vertex(x * 16 + px, y * 16 + py, z * 16 + pz, u, v, layers[f], sky, blk, Math.round(face.shade * 255), 0);
+    }
+  }
+}
+
+function emitCross(mb, x, y, z, layer, light, sway) {
+  const sky = (light >> 4) * 16, blk = (light & 15) * 16;
+  const X = x * 16, Y = y * 16, Z = z * 16;
+  const planes = [
+    [[2, 2], [14, 14]],
+    [[2, 14], [14, 2]],
+  ];
+  for (const [[ax, az], [bx, bz]] of planes) {
+    const quad = [
+      [ax, 0, az, 0, 16], [bx, 0, bz, 16, 16], [bx, 16, bz, 16, 0], [ax, 16, az, 0, 0],
+    ];
+    for (const order of [[0, 1, 2, 3], [1, 0, 3, 2]]) {
+      for (const i of order) {
+        const q = quad[i];
+        mb.vertex(X + q[0], Y + q[1], Z + q[2], q[3], q[4], layer, sky, blk, 235, q[1] && sway ? FLAG_SWAY : 0);
+      }
+    }
+  }
+}
+
+const TORCH_BOX = [7, 0, 7, 9, 10, 9];
+// Makes the torch top show the flame pixels (texture rows 6-7).
+const TORCH_UV = [null, null, (u, v) => [u, v - 1], null, null, null];
+const WALL_TORCH_TRANSFORMS = {
+  [B.WALL_TORCH_PX]: (px, py, pz) => [px - 7 + 0.4 * py, py + 3, pz],
+  [B.WALL_TORCH_NX]: (px, py, pz) => [16 - (px - 7 + 0.4 * py), py + 3, 16 - pz],
+  [B.WALL_TORCH_PZ]: (px, py, pz) => [16 - pz, py + 3, px - 7 + 0.4 * py],
+  [B.WALL_TORCH_NZ]: (px, py, pz) => [pz, py + 3, 16 - (px - 7 + 0.4 * py)],
+};
+
+// Builds the meshes for one chunk. Returns { solid, water } vertex data.
+export function buildChunkMesh(world, chunk) {
+  initLayers();
+  gatherPadded(world, chunk);
+  solid.reset();
+  liquid.reset();
+  let maxY = 0;
+  for (let i = 0; i < chunk.heightmap.length; i++) maxY = Math.max(maxY, chunk.heightmap[i]);
+  maxY = Math.min(CHUNK_HEIGHT - 1, maxY);
+
+  for (let y = 0; y <= maxY; y++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      let pc = pidx(0, y, z);
+      for (let x = 0; x < CHUNK_SIZE; x++, pc++) {
+        const id = padBlocks[pc];
+        if (id === B.AIR) continue;
+        const block = BLOCKS[id];
+        const layerBase = id * 6;
+        switch (block.shape) {
+          case 'cube': {
+            for (let f = 0; f < 6; f++) {
+              const nid = padBlocks[pc + FACES[f].delta];
+              if (shouldDrawFace(id, nid)) emitCubeFace(solid, f, x, y, z, pc, faceLayers[layerBase + f]);
+            }
+            break;
+          }
+          case 'liquid': {
+            const mb = block.translucent ? liquid : solid;
+            const aboveSame = padBlocks[pc + FACES[2].delta] === id;
+            const top = aboveSame ? 16 : 14;
+            for (let f = 0; f < 6; f++) {
+              const nid = padBlocks[pc + FACES[f].delta];
+              if (nid === id || IS_OPAQUE[nid]) continue;
+              if (f === 2 && aboveSame) continue;
+              emitCubeFace(mb, f, x, y, z, pc, faceLayers[layerBase + f], top, aboveSame ? 0 : FLAG_WAVE);
+            }
+            break;
+          }
+          case 'cross': {
+            const sway = id === B.TALL_GRASS || id === B.DANDELION || id === B.POPPY;
+            emitCross(solid, x, y, z, faceLayers[layerBase], padLight[pc], sway);
+            break;
+          }
+          case 'torch': {
+            const l = padLight[pc];
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            emitBox(solid, x, y, z, TORCH_BOX, layers, (l >> 4) * 16, (l & 15) * 16, 63 & ~(1 << 3), WALL_TORCH_TRANSFORMS[id] || null, TORCH_UV);
+            break;
+          }
+          case 'cactus': {
+            let mask = 0b110011; // sides always (they are inset)
+            if (shouldDrawFace(id, padBlocks[pc + FACES[2].delta]) && padBlocks[pc + FACES[2].delta] !== id) mask |= 1 << 2;
+            if (shouldDrawFace(id, padBlocks[pc + FACES[3].delta]) && padBlocks[pc + FACES[3].delta] !== id) mask |= 1 << 3;
+            const l = padLight[pc];
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            emitBox(solid, x, y, z, [1, 0, 1, 15, 16, 15], layers, (l >> 4) * 16, (l & 15) * 16, mask);
+            break;
+          }
+        }
+      }
+    }
+  }
+  return {
+    solid: solid.result(),
+    solidQuads: solid.quads,
+    water: liquid.result(),
+    waterQuads: liquid.quads,
+  };
+}
+
+// Mesh for a single block (held item, crack overlay), lit uniformly.
+export function buildBlockMesh(id, sky = 240, blk = 0) {
+  initLayers();
+  const mb = new MeshBuilder(64);
+  const block = BLOCKS[id];
+  const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[id * 6 + f]);
+  if (block.shape === 'cross') {
+    emitCross(mb, 0, 0, 0, layers[0], (sky >> 4 << 4) | (blk >> 4), false);
+  } else if (block.shape === 'torch') {
+    emitBox(mb, 0, 0, 0, TORCH_BOX, layers, sky, blk, 63, null, TORCH_UV);
+  } else if (block.shape === 'cactus') {
+    emitBox(mb, 0, 0, 0, [1, 0, 1, 15, 16, 15], layers, sky, blk);
+  } else {
+    emitBox(mb, 0, 0, 0, [0, 0, 0, 16, 16, 16], layers, sky, blk);
+  }
+  return { data: mb.result(), quads: mb.quads };
+}
+
+// A cube using one texture layer on all faces (crack overlay).
+export function buildOverlayCube(layer, box = [0, 0, 0, 16, 16, 16]) {
+  initLayers();
+  const mb = new MeshBuilder(32);
+  emitBox(mb, 0, 0, 0, box, [layer, layer, layer, layer, layer, layer], 240, 240);
+  return { data: mb.result(), quads: mb.quads };
+}
+
+// A flat, double-sided sprite quad (held non-block items).
+export function buildSpriteMesh(layer) {
+  const mb = new MeshBuilder(8);
+  const quad = [[0, 0, 0, 16], [16, 0, 16, 16], [16, 16, 16, 0], [0, 16, 0, 0]];
+  for (const order of [[0, 1, 2, 3], [1, 0, 3, 2]]) {
+    for (const i of order) {
+      const q = quad[i];
+      mb.vertex(q[0], q[1], 8, q[2], q[3], layer, 240, 0, 255, 0);
+    }
+  }
+  return { data: mb.result(), quads: mb.quads };
+}

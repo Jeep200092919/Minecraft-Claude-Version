@@ -1,0 +1,48 @@
+name: Release
+
+# Builds ClaudeCraft.zip / ClaudeCraft.exe / ClaudeCraft.html and publishes them
+# as a GitHub Release. Run it by pushing a tag like v1.0.0, or manually from
+# the Actions tab.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (for example v1.0.0)
+        required: true
+        default: v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - name: Unit tests
+        run: npm test
+      - name: Build downloads
+        run: npm run package
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ClaudeCraft ${{ github.event.inputs.tag || github.ref_name }}
+          body: |
+            **Windows:** download `ClaudeCraft.exe` and double-click it.
+            **Any OS:** download `ClaudeCraft.zip` (or just `ClaudeCraft.html`) and open the HTML file in Chrome, Edge or Firefox.
+
+            The launcher is not code-signed; if Windows SmartScreen warns you, choose "More info" → "Run anyway".
+          files: |
+            downloads/ClaudeCraft.zip
+            downloads/ClaudeCraft.exe
+            downloads/ClaudeCraft.html
