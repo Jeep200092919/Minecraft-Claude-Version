@@ -11,7 +11,7 @@
 //   uint8  temp, humid  biome climate for grass/foliage tinting
 import { CHUNK_SIZE, CHUNK_HEIGHT } from './constants.js';
 import { B, BLOCKS, ITEMS, IS_OPAQUE, IS_SOLID, isBlockItem } from './blocks.js';
-import { generateTextures } from './textures.js';
+import { generateTextures, atlasLayer } from './textures.js';
 
 export const VERTEX_BYTES = 16;
 export const FLAG_WAVE = 1; // liquid surface (top vertices)
@@ -273,17 +273,34 @@ function onBoundary(box, f) {
   }
 }
 
-function emitBoxesCulled(mb, x, y, z, pc, boxes, layers, flags = 0) {
+function emitBoxesCulled(mb, x, y, z, pc, boxes, layers, flags = 0, faceMask = 63, uvOverride = null) {
   for (const box of boxes) {
     for (let f = 0; f < 6; f++) {
+      if (!(faceMask & (1 << f))) continue;
       const edge = onBoundary(box, f);
       const npc = pc + FACES[f].delta;
       if (edge && IS_OPAQUE[padBlocks[npc]]) continue;
       const l = edge ? padLight[npc] : padLight[pc];
-      emitBox(mb, x, y, z, box, layers, (l >> 4) * 16, (l & 15) * 16, 1 << f, null, null, flags);
+      emitBox(mb, x, y, z, box, layers, (l >> 4) * 16, (l & 15) * 16, 1 << f, null, uvOverride, flags);
     }
   }
 }
+
+// UV rotations for top faces (beds, rails): quarter turns clockwise.
+const ROTATE_UV = [
+  null,
+  [null, null, (u, v) => [v, 16 - u], null, null, null],
+  [null, null, (u, v) => [16 - u, 16 - v], null, null, null],
+  [null, null, (u, v) => [16 - v, u], null, null, null],
+];
+
+const PANE_POST = [7, 0, 7, 9, 16, 9];
+const PANE_ARMS = [[9, 0, 7, 16, 16, 9], [0, 0, 7, 7, 16, 9], null, null, [7, 0, 9, 9, 16, 16], [7, 0, 0, 9, 16, 7]];
+function paneConnects(nid) {
+  const b = BLOCKS[nid];
+  return b.shape === 'pane' || nid === B.GLASS || (IS_OPAQUE[nid] && IS_SOLID[nid]);
+}
+const PORTAL_BOXES = { 0: [0, 0, 6, 16, 16, 10], 2: [6, 0, 0, 10, 16, 16] };
 
 const LANTERN_BOXES = [[5, 0, 5, 11, 7, 11], [6, 7, 6, 10, 9, 10]];
 const HANGING_LANTERN_BOXES = [[5, 1, 5, 11, 8, 11], [6, 8, 6, 10, 10, 10], [7, 10, 7, 9, 16, 9]];
@@ -373,8 +390,22 @@ export function buildChunkMesh(world, chunk) {
             break;
           }
           case 'cross': {
-            const sway = id === B.TALL_GRASS || id === B.DANDELION || id === B.POPPY;
+            const sway = block.sway || block.support === 'ground';
             emitCross(solid, x, y, z, faceLayers[layerBase], padLight[pc], sway);
+            break;
+          }
+          case 'pane': {
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            const boxes = [PANE_POST];
+            for (const f of [0, 1, 4, 5]) {
+              if (paneConnects(padBlocks[pc + FACES[f].delta])) boxes.push(PANE_ARMS[f]);
+            }
+            emitBoxesCulled(solid, x, y, z, pc, boxes, layers, allFlags);
+            break;
+          }
+          case 'portal': {
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            emitBoxesCulled(solid, x, y, z, pc, [PORTAL_BOXES[block.axis]], layers, allFlags, block.axis === 0 ? 0b110000 : 0b000011);
             break;
           }
           case 'torch': {
@@ -405,7 +436,7 @@ export function buildChunkMesh(world, chunk) {
           }
           case 'box': {
             const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
-            emitBoxesCulled(solid, x, y, z, pc, [block.box], layers, allFlags);
+            emitBoxesCulled(solid, x, y, z, pc, [block.box], layers, allFlags, block.topOnly ? 0b000100 : 63, ROTATE_UV[block.rotateTop || 0]);
             break;
           }
           case 'chest': {
@@ -452,6 +483,8 @@ export function buildBlockMesh(id, sky = 240, blk = 0) {
     emitBox(mb, 0, 0, 0, [1, 0, 1, 15, 16, 15], layers, sky, blk);
   } else if (block.shape === 'chest') {
     emitBox(mb, 0, 0, 0, CHEST_BOX, layers, sky, blk);
+  } else if (block.shape === 'pane') {
+    for (const box of [PANE_POST, PANE_ARMS[0], PANE_ARMS[1]]) emitBox(mb, 0, 0, 0, box, layers, sky, blk);
   } else if (block.boxes) {
     for (const box of block.boxes) emitBox(mb, 0, 0, 0, box, layers, sky, blk);
   } else if (block.box) {
@@ -495,8 +528,9 @@ export function itemSpriteName(id) {
 // sides can sample pixel centres; draw with uUVScale = 1/32.
 export function buildExtrudedSprite(name) {
   const tex = generateTextures();
-  const layer = tex.index.get(name);
-  const px = tex.pixels.subarray(layer * 1024, layer * 1024 + 1024);
+  const global = tex.index.get(name);
+  const { atlas, layer } = atlasLayer(name);
+  const px = tex.pixels.subarray(global * 1024, global * 1024 + 1024);
   const solidAt = (x, y) => x >= 0 && y >= 0 && x < 16 && y < 16 && px[(y * 16 + x) * 4 + 3] >= 128;
   const mb = new MeshBuilder(256);
   const z0 = 7, z1 = 8;
@@ -516,5 +550,5 @@ export function buildExtrudedSprite(name) {
       if (!solidAt(x, py + 1)) quad([[x, y0, z0], [x + 1, y0, z0], [x + 1, y0, z1], [x, y0, z1]], u, v, 3);
     }
   }
-  return { data: mb.result(), quads: mb.quads, uvScale: 1 / 32 };
+  return { data: mb.result(), quads: mb.quads, uvScale: 1 / 32, atlas };
 }

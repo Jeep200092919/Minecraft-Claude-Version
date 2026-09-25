@@ -1,10 +1,36 @@
 // DOM user interface: menus, HUD, inventory and crafting screens.
-import { ITEMS, CREATIVE_ITEMS, SMELTING, SMELT_TIME, fuelTime } from './blocks.js';
+import { ITEMS, BLOCKS, CREATIVE_ITEMS, SMELTING, SMELT_TIME, fuelTime, isBlockItem } from './blocks.js';
 import { clickSlot, matchRecipe, consumeCraftingGrid, maxStack, stack } from './inventory.js';
-import { itemIcon, hudIcons, dirtBackground, logoDataURL, buttonTexture } from './icons.js';
+import { itemIcon, hudIcons, dirtBackground, logoDataURL, buttonTexture, playerPreview } from './icons.js';
 import { MAX_HEALTH, MAX_AIR, MAX_HUNGER } from './player.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Creative inventory tabs.
+const TABS = [
+  { key: 'building', label: 'Building Blocks', icon: 36 },
+  { key: 'nature', label: 'Natural Blocks', icon: 2 },
+  { key: 'functional', label: 'Functional Blocks', icon: 35 },
+  { key: 'tools', label: 'Tools & Utilities', icon: 270 },
+  { key: 'combat', label: 'Combat', icon: 276 },
+  { key: 'food', label: 'Food & Drinks', icon: 284 },
+  { key: 'materials', label: 'Ingredients', icon: 258 },
+  { key: 'eggs', label: 'Spawn Eggs', icon: 304 },
+  { key: 'search', label: 'Search', icon: 0 },
+];
+const NATURE = /(^|_)(grass|dirt|sand|gravel|clay|snow|ice|stone$|log|leaves|sapling|ore|mushroom|cactus|sugar_cane|pumpkin|melon|lily|fern|bush|flower|tulip|allium|bluet|daisy|poppy|dandelion|valley|cornflower|netherrack|soul_sand|magma|obsidian|granite|diorite|andesite|deepslate|bedrock|cobweb)/;
+function tabOf(id) {
+  const it = ITEMS.get(id);
+  if (it.spawns) return 'eggs';
+  if (it.food) return 'food';
+  if (it.armor || it.bow || id === 307 || it.tool?.type === 'sword') return 'combat';
+  if (it.tool || it.bucket !== undefined || it.throwable === 'ender_pearl' || ['flint_and_steel', 'compass', 'clock', 'bone_meal'].includes(it.name)) return 'tools';
+  if (!isBlockItem(id)) return it.places ? 'functional' : 'materials';
+  const b = BLOCKS[id];
+  if (b.container || b.lightEmit || b.ladder || ['crafting_table', 'tnt', 'rail', 'spawner', 'bookshelf', 'hay_bale'].includes(b.name)) return 'functional';
+  if (NATURE.test(b.name) && !/polished|brick|cut_|chiseled|smooth/.test(b.name)) return 'nature';
+  return 'building';
+}
 
 export class UI {
   constructor(game) {
@@ -222,10 +248,18 @@ export class UI {
       c.textContent = s.count;
       el.appendChild(c);
     }
+    const max = ITEMS.get(s.id)?.durability;
+    if (s.dmg && max) {
+      const frac = Math.max(0, 1 - s.dmg / max);
+      const bar = document.createElement('div');
+      bar.className = 'dur';
+      bar.innerHTML = `<div style="width:${Math.round(frac * 100)}%;background:hsl(${Math.round(frac * 120)},100%,45%)"></div>`;
+      el.appendChild(bar);
+    }
   }
 
   updateHotbar(inv) {
-    const sig = inv.selected + '|' + inv.slots.slice(0, 9).map((s) => (s ? `${s.id}x${s.count}` : '-')).join(',');
+    const sig = inv.selected + '|' + inv.slots.slice(0, 9).map((s) => (s ? `${s.id}x${s.count}d${s.dmg || 0}` : '-')).join(',');
     if (sig === this.hotbarSig) return;
     this.hotbarSig = sig;
     this.hotbarSlots.forEach((el, i) => {
@@ -235,9 +269,28 @@ export class UI {
   }
 
   updateStatus(player, creative) {
+    const xpSig = `${creative}|${player.xpLevel}|${Math.round(player.xpProgress * 182)}|${player.armor}`;
+    if (xpSig !== this.xpSig) {
+      this.xpSig = xpSig;
+      $('xp').style.visibility = creative ? 'hidden' : 'visible';
+      $('xp-fill').style.width = `${(player.xpProgress * 100).toFixed(1)}%`;
+      $('xp-level').textContent = player.xpLevel > 0 ? player.xpLevel : '';
+      const armor = $('armor');
+      armor.innerHTML = '';
+      if (!creative && player.armor > 0) {
+        const icons = hudIcons();
+        for (let i = 0; i < 10; i++) {
+          const img = document.createElement('img');
+          const a = player.armor - i * 2;
+          img.src = a >= 2 ? icons.armorFull : a === 1 ? icons.armorHalf : icons.armorEmpty;
+          img.alt = '';
+          armor.appendChild(img);
+        }
+      }
+    }
     const air = player.headInWater || player.air < MAX_AIR ? Math.ceil((player.air / MAX_AIR) * 10) : -1;
     const starving = player.hunger <= 0 || (player.saturation <= 0 && Math.floor(this.game.seconds * 6) % 5 === 0);
-    const sig = `${creative}|${player.health}|${air}|${player.hurtTime > 0}|${player.hunger}|${starving}`;
+    const sig = `${creative}|${player.health}|${air}|${player.hurtTime > 0}|${player.hunger}|${starving}|${player.absorption}`;
     if (sig === this.statusSig) return;
     this.statusSig = sig;
     const hearts = $('hearts');
@@ -252,7 +305,13 @@ export class UI {
     for (let i = 0; i < MAX_HEALTH / 2; i++) {
       const img = document.createElement('img');
       const hp = player.health - i * 2;
-      img.src = hp >= 2 ? icons.heartFull : hp === 1 ? icons.heartHalf : icons.heartEmpty;
+      img.src = hp >= 2 ? icons.heartFull : hp >= 1 ? icons.heartHalf : icons.heartEmpty;
+      img.alt = '';
+      hearts.appendChild(img);
+    }
+    for (let i = 0; i < Math.ceil(player.absorption / 2); i++) {
+      const img = document.createElement('img');
+      img.src = player.absorption - i * 2 >= 2 ? icons.heartGold : icons.heartGoldHalf;
       img.alt = '';
       hearts.appendChild(img);
     }
@@ -284,6 +343,12 @@ export class UI {
     el.textContent = name || '';
     el.classList.add('on');
     this.itemNameTimer = 1.8;
+  }
+
+  setSleepFade(v) {
+    const el = $('sleep-fade');
+    el.style.opacity = v;
+    el.style.display = v > 0 ? 'block' : 'none';
   }
 
   toast(msg) {
@@ -319,6 +384,8 @@ export class UI {
     this.containerSig = '';
     this.cursor = null;
     this.paletteScroll = 0;
+    this.tab = this.tab || 'building';
+    this.search = '';
     this.buildInventory();
     this.show('inventory');
   }
@@ -329,7 +396,7 @@ export class UI {
     if (this.craft) {
       for (const s of this.craft.slots) if (s) inv.add(s.id, s.count);
     }
-    if (this.cursor) inv.add(this.cursor.id, this.cursor.count);
+    if (this.cursor) inv.addStack(this.cursor);
     this.cursor = null;
     this.craft = null;
     this.container = null;
@@ -346,19 +413,23 @@ export class UI {
     if (this.container) {
       this.buildContainer(panel);
     } else if (creative && !table) {
-      const h = document.createElement('h3');
-      h.textContent = 'Creative Inventory';
-      panel.appendChild(h);
-      const pal = document.createElement('div');
-      pal.className = 'grid palette';
-      CREATIVE_ITEMS.forEach((id, i) => pal.appendChild(this.makeSlot('palette', i, stack(id, 1))));
-      panel.appendChild(pal);
+      this.buildCreative(panel);
     } else {
       const h = document.createElement('h3');
       h.textContent = table ? 'Crafting Table' : 'Crafting';
       panel.appendChild(h);
       const row = document.createElement('div');
       row.className = 'crafting';
+      if (!table) {
+        // Armour slots and a picture of the player, like the survival inventory.
+        const armor = document.createElement('div');
+        armor.className = 'armor-col';
+        for (let i = 0; i < 4; i++) armor.appendChild(this.makeSlot('armor', i));
+        const preview = document.createElement('div');
+        preview.className = 'preview';
+        preview.style.backgroundImage = `url(${playerPreview(this.game.skinIndex ?? 0)})`;
+        row.append(armor, preview);
+      }
       const grid = document.createElement('div');
       grid.className = 'craft-grid';
       grid.style.gridTemplateColumns = `repeat(${size}, 36px)`;
@@ -382,6 +453,52 @@ export class UI {
     for (let i = 0; i < 9; i++) hot.appendChild(this.makeSlot('inv', i));
     panel.append(main, hot);
     this.refreshInventory();
+  }
+
+  buildCreative(panel) {
+    const tabs = document.createElement('div');
+    tabs.className = 'ctabs';
+    for (const t of TABS) {
+      const b = document.createElement('div');
+      b.className = `ctab${t.key === this.tab ? ' on' : ''}`;
+      b.title = t.label;
+      b.dataset.tab = t.key;
+      if (t.icon) b.style.backgroundImage = `url(${itemIcon(t.icon)})`;
+      else b.textContent = '?';
+      tabs.appendChild(b);
+    }
+    panel.appendChild(tabs);
+    const head = document.createElement('div');
+    head.className = 'chead';
+    const h = document.createElement('h3');
+    h.textContent = TABS.find((t) => t.key === this.tab).label;
+    head.appendChild(h);
+    if (this.tab === 'search') {
+      const input = document.createElement('input');
+      input.id = 'creative-search';
+      input.placeholder = 'Search items…';
+      input.value = this.search;
+      input.addEventListener('input', () => { this.search = input.value; this.fillPalette(); });
+      input.addEventListener('keydown', (e) => e.stopPropagation());
+      head.appendChild(input);
+    }
+    panel.appendChild(head);
+    const pal = document.createElement('div');
+    pal.className = 'grid palette';
+    pal.id = 'palette';
+    panel.appendChild(pal);
+    this.fillPalette();
+    if (this.tab === 'search') setTimeout(() => $('creative-search')?.focus(), 0);
+  }
+
+  fillPalette() {
+    const pal = $('palette');
+    if (!pal) return;
+    pal.innerHTML = '';
+    const q = this.search.trim().toLowerCase();
+    const ids = CREATIVE_ITEMS.filter((id) => (this.tab === 'search' ? !q || ITEMS.get(id).displayName.toLowerCase().includes(q) : tabOf(id) === this.tab));
+    ids.forEach((id, i) => pal.appendChild(this.makeSlot('palette', i, stack(id, 1))));
+    for (let i = ids.length; i < Math.max(45, Math.ceil(ids.length / 9) * 9); i++) pal.appendChild(this.makeSlot('empty', i));
   }
 
   buildContainer(panel) {
@@ -456,7 +573,11 @@ export class UI {
       const kind = el.dataset.kind, i = Number(el.dataset.index);
       if (kind === 'inv') this.renderStackInto(el, inv.slots[i]);
       else if (kind === 'craft') this.renderStackInto(el, this.craft.slots[i]);
-      else if (kind === 'container') this.renderStackInto(el, this.container.entity.slots[i]);
+      else if (kind === 'armor') {
+        this.renderStackInto(el, inv.armor[i]);
+        el.classList.toggle('armor-empty', !inv.armor[i]);
+        el.dataset.piece = i;
+      } else if (kind === 'container') this.renderStackInto(el, this.container.entity.slots[i]);
       else if (kind === 'result') {
         const r = this.craftResult();
         this.renderStackInto(el, r ? stack(r.id, r.count) : null);
@@ -474,7 +595,7 @@ export class UI {
     if (x !== undefined) {
       el.style.transform = `translate(${x - 16}px, ${y - 16}px)`;
     }
-    const sig = this.cursor ? `${this.cursor.id}x${this.cursor.count}` : '';
+    const sig = this.cursor ? `${this.cursor.id}x${this.cursor.count}d${this.cursor.dmg || 0}` : '';
     if (el.dataset.sig !== sig) {
       el.dataset.sig = sig;
       this.renderStackInto(el, this.cursor);
@@ -490,6 +611,13 @@ export class UI {
     const panel = $('inventory-panel');
     panel.addEventListener('contextmenu', (e) => e.preventDefault());
     panel.addEventListener('mousedown', (e) => {
+      const tab = e.target.closest('.ctab');
+      if (tab) {
+        this.tab = tab.dataset.tab;
+        this.game.sound.click();
+        this.buildInventory();
+        return;
+      }
       const el = e.target.closest('.slot');
       if (!el) return;
       e.preventDefault();
@@ -501,27 +629,48 @@ export class UI {
       this.updateCursor(e.clientX, e.clientY);
       const el = e.target.closest?.('.slot');
       const tip = $('tooltip');
-      let id = null;
+      let st = null;
       if (el) {
         const kind = el.dataset.kind, i = Number(el.dataset.index);
-        if (kind === 'palette') id = Number(el.dataset.item);
-        else if (kind === 'inv') id = this.game.inventory.slots[i]?.id;
-        else if (kind === 'craft') id = this.craft.slots[i]?.id;
-        else if (kind === 'container') id = this.container?.entity.slots[i]?.id;
-        else if (kind === 'result') id = this.craftResult()?.id;
+        const inv = this.game.inventory;
+        if (kind === 'palette') st = { id: Number(el.dataset.item) };
+        else if (kind === 'inv') st = inv.slots[i];
+        else if (kind === 'armor') st = inv.armor[i];
+        else if (kind === 'craft') st = this.craft.slots[i];
+        else if (kind === 'container') st = this.container?.entity.slots[i];
+        else if (kind === 'result') st = this.craftResult();
       }
+      const id = st?.id;
       if (id && !this.cursor) {
-        tip.textContent = ITEMS.get(id).displayName;
+        const it = ITEMS.get(id);
+        tip.innerHTML = '';
+        tip.append(it.displayName);
+        const extra = [];
+        if (it.armor) extra.push(`+${it.armor.points} Armor`);
+        else if (it.tool || it.damage > 1) extra.push(`${it.damage} Attack Damage`);
+        if (st.dmg && it.durability) extra.push(`Durability: ${it.durability - st.dmg} / ${it.durability}`);
+        for (const line of extra) {
+          const d = document.createElement('div');
+          d.className = 'tip-extra';
+          d.textContent = line;
+          tip.appendChild(d);
+        }
         tip.style.left = `${e.clientX + 14}px`;
         tip.style.top = `${e.clientY - 28}px`;
         tip.classList.add('on');
       } else tip.classList.remove('on');
     });
-    // Clicking outside the panel with a held stack puts it back.
+    // Clicking outside the panel with a held stack throws it on the ground.
     $('screen-inventory').addEventListener('mousedown', (e) => {
       if (e.target.id === 'screen-inventory' && this.cursor) {
-        this.game.inventory.add(this.cursor.id, this.cursor.count);
-        this.cursor = null;
+        const g = this.game;
+        if (g.creative) this.cursor = null;
+        else {
+          const p = g.player, eye = p.eye(), d = p.lookDir();
+          const it = g.entities.dropItem(this.cursor, eye[0] + d[0] * 0.3, eye[1] - 0.3, eye[2] + d[2] * 0.3, [d[0] * 4, 2, d[2] * 4]);
+          if (it) it.pickupDelay = 2;
+          this.cursor = null;
+        }
         this.refreshInventory();
       }
     });
@@ -531,7 +680,9 @@ export class UI {
     const inv = this.game.inventory;
     const kind = el.dataset.kind;
     const i = Number(el.dataset.index);
-    if (kind === 'palette') {
+    if (kind === 'empty') {
+      this.cursor = null; // dropping a stack into the creative palette deletes it
+    } else if (kind === 'palette') {
       const id = Number(el.dataset.item);
       if (shift) inv.add(id, maxStack(id));
       else if (this.cursor) this.cursor = null; // clicking the palette deletes the held stack
@@ -549,6 +700,18 @@ export class UI {
         this.craft.slots[i] = left ? stack(s.id, left) : null;
       } else {
         this.cursor = clickSlot(this.craft.slots, i, this.cursor, button);
+      }
+    } else if (kind === 'armor') {
+      const worn = inv.armor[i];
+      const c = this.cursor;
+      if (shift) {
+        if (worn && inv.addStack(worn) === 0) inv.armor[i] = null;
+      } else if (!c) {
+        this.cursor = worn;
+        inv.armor[i] = null;
+      } else if (ITEMS.get(c.id)?.armor?.slot === i && c.count === 1) {
+        inv.armor[i] = c;
+        this.cursor = worn;
       }
     } else if (kind === 'result') {
       this.takeResult(shift);
@@ -610,6 +773,12 @@ export class UI {
     const inv = this.game.inventory;
     const s = inv.slots[i];
     const c = this.container;
+    const armor = ITEMS.get(s.id)?.armor;
+    if (!c && !this.game.creative && armor && !inv.armor[armor.slot]) {
+      inv.armor[armor.slot] = s;
+      inv.slots[i] = null;
+      return;
+    }
     if (c) {
       if (c.type === 'chest') this.moveInto(c.entity.slots, s, 0, 27);
       else if (SMELTING.has(s.id)) this.moveInto(c.entity.slots, s, 0, 1);

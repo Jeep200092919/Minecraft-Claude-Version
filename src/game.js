@@ -1,7 +1,7 @@
 // Game controller: owns the world, player, renderer and UI, runs the main
 // loop and implements the gameplay rules.
 import { CHUNK_SIZE, CHUNK_HEIGHT, DAY_LENGTH_TICKS, TICKS_PER_SECOND, GAME_NAME } from './constants.js';
-import { B, I, BLOCKS, ITEMS, IS_SOLID, isBlockItem, breakTime, blockDrops, orientedBlock } from './blocks.js';
+import { B, I, BLOCKS, ITEMS, IS_SOLID, breakTime, blockDrops } from './blocks.js';
 import { World } from './world.js';
 import { buildChunkMesh } from './mesher.js';
 import { Renderer } from './renderer.js';
@@ -18,6 +18,10 @@ import { BIOME_NAMES } from './worldgen.js';
 import { EntityManager } from './entities.js';
 import { mobSkins } from './mobs.js';
 import { tickFurnaces, tickCrops, explode, newFurnace, newChest } from './gameplay.js';
+import { useOnBlock, useInAir, isInteractive, partnerOf } from './interact.js';
+import { PlayerRenderer } from './playermodel.js';
+import { Weather } from './weather.js';
+import { Chat } from './chat.js';
 import { skyState } from './sky.js';
 import { villageLoot } from './villages.js';
 
@@ -34,10 +38,10 @@ export const DEFAULT_SETTINGS = {
 };
 
 const CREATIVE_HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.COBBLESTONE, B.PLANKS, B.LOG, B.GLASS, B.TORCH, B.LANTERN];
-const WALL_TORCH_BY_FACE = [B.WALL_TORCH_PX, B.WALL_TORCH_NX, B.TORCH, null, B.WALL_TORCH_PZ, B.WALL_TORCH_NZ];
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const PLANT_SOIL = new Set([B.GRASS, B.DIRT, B.SNOWY_GRASS]);
 const DESERT_SOIL = new Set([B.SAND, B.GRASS, B.DIRT]);
+const CANE_SOIL = new Set([B.SAND, B.GRASS, B.DIRT]);
 const now = () => performance.now() / 1000;
 
 export function parseSeed(text) {
@@ -58,10 +62,18 @@ export class Game {
     this.ui = new UI(this);
     this.particles = new Particles();
     this.entities = new EntityManager(this);
+    this.playerRenderer = new PlayerRenderer(this.renderer, this.entities);
+    this.thirdPerson = 0;
+    this.skinIndex = 0;
+    this.weather = new Weather();
+    this.chat = new Chat(this);
+    this.playerName = this.settings.playerName || 'Player';
     this.pendingEvents = [];
     this.eating = null;
     this.attackCooldown = 0;
     this.targetMob = null;
+    this.bowCharge = -1; // seconds the bow has been drawn, -1 when not drawing
+    this.sleeping = null;
     const skins = mobSkins();
     this.renderer.setEntitySkins(skins.pixels, skins.count);
     this.state = 'title';
@@ -297,6 +309,14 @@ export class Game {
     this.openInventory({ type, entity: be });
   }
 
+  setGameMode(mode) {
+    this.creative = mode === 'creative';
+    if (this.meta) this.meta.mode = mode;
+    if (!this.creative) this.player.flying = false;
+    this.ui.statusSig = '';
+    this.ui.xpSig = '';
+  }
+
   explode(x, y, z, power) {
     explode(this, x, y, z, power);
   }
@@ -331,6 +351,10 @@ export class Game {
     if (code === 'Escape') this.pause();
     else if (code === 'KeyE') this.openInventory('player');
     else if (code === 'F3') this.showDebug = !this.showDebug;
+    else if (code === 'KeyQ') this.dropSelected(this.input.isDown('ControlLeft') || this.input.isDown('ControlRight'));
+    else if (code === 'KeyT' || code === 'Enter') this.chat.show('');
+    else if (code === 'Slash') this.chat.show('/');
+    else if (code === 'F5') this.thirdPerson = ((this.thirdPerson || 0) + 1) % 3;
     else if (code === 'F1') {
       this.hideHud = !this.hideHud;
       this.ui.setHudVisible(!this.hideHud);
@@ -425,14 +449,16 @@ export class Game {
     }
     if (playing) {
       this.updateLook();
-      const ready = this.world.isReady(player.pos[0], player.pos[2]);
+      player.armor = this.inventory.armorPoints();
+      const ready = this.world.isReady(player.pos[0], player.pos[2]) && !this.sleeping;
       const events = [];
       if (ready) {
         const input = this.movementInput();
         player.update(dt, input, this.world, this.creative, events);
       }
       this.handleEvents(events);
-      this.updateInteraction(dt);
+      if (this.sleeping) this.updateSleep(dt);
+      else this.updateInteraction(dt);
       this.ticks = (this.ticks + dt * TICKS_PER_SECOND) % DAY_LENGTH_TICKS;
       this.autosave += dt;
       if (this.autosave > 30) {
@@ -446,9 +472,10 @@ export class Game {
 
     this.world.update(pcx, pcz, rd, playing ? 6 : 12, this.buildMesh);
     if (this.state !== 'paused' && this.state !== 'inventory') this.particles.update(dt, this.world);
-    const simulate = this.state === 'playing' || this.state === 'inventory';
+    const simulate = this.state === 'playing' || this.state === 'inventory' || this.state === 'chat';
+    if (simulate) this.weather.update(dt, this, !this.net || this.net.isAuthority);
     if (simulate && this.world.isReady(player.pos[0], player.pos[2])) {
-      this.entities.update(dt, skyState(this.ticks));
+      this.entities.update(dt, skyState(this.ticks, this.weather.rain));
       tickFurnaces(this, dt);
       tickCrops(this, dt);
     }
@@ -458,6 +485,7 @@ export class Game {
       this.handleEvents(ev);
     }
     if (this.state === 'inventory') this.ui.refreshContainer();
+    this.chat.tick();
     this.sound.updateMusic(dt);
 
     // Animations
@@ -466,13 +494,25 @@ export class Game {
     const speed = Math.hypot(player.vel[0], player.vel[2]);
     const bobTarget = this.settings.viewBobbing && player.onGround && !player.flying ? Math.min(1, speed / 4.3) : 0;
     this.bobAmount += (bobTarget - this.bobAmount) * Math.min(1, dt * 8);
-    const fovTarget = player.sprinting ? 1.12 : 1;
+    const fovTarget = (player.sprinting ? 1.12 : 1) * (this.bowCharge > 0 ? 1 - 0.15 * Math.min(1, this.bowCharge) : 1);
     this.fovBoost += (fovTarget - this.fovBoost) * Math.min(1, dt * 8);
 
     const eye = player.eye();
     const bob = player.walkDist * Math.PI * 0.62;
-    const camPos = [...eye];
-    if (this.bobAmount > 0.01) {
+    let camPos = [...eye];
+    let camYaw = player.yaw, camPitch = player.pitch;
+    if (this.thirdPerson) {
+      const d = player.lookDir();
+      const sign = this.thirdPerson === 1 ? -1 : 1;
+      // Pull the camera in if a block is in the way.
+      let dist = 4;
+      for (let k = 0.2; k <= 4; k += 0.1) {
+        const x = eye[0] + d[0] * k * sign, y = eye[1] + d[1] * k * sign, z = eye[2] + d[2] * k * sign;
+        if (IS_SOLID[this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))]) { dist = Math.max(0.3, k - 0.3); break; }
+      }
+      camPos = [eye[0] + d[0] * dist * sign, eye[1] + d[1] * dist * sign, eye[2] + d[2] * dist * sign];
+      if (this.thirdPerson === 2) { camYaw = player.yaw + Math.PI; camPitch = -player.pitch; }
+    } else if (this.bobAmount > 0.01) {
       const b = this.bobAmount;
       camPos[1] += -Math.abs(Math.cos(bob)) * 0.07 * b + 0.035 * b;
       camPos[0] += Math.cos(player.yaw) * Math.sin(bob) * 0.035 * b;
@@ -482,14 +522,15 @@ export class Game {
     const t = this.target;
     this.renderer.render({
       world: this.world,
-      camera: { pos: camPos, yaw: player.yaw, pitch: player.pitch, fov: this.settings.fov * this.fovBoost },
+      camera: { pos: camPos, yaw: camYaw, pitch: camPitch, fov: this.settings.fov * this.fovBoost },
       ticks: this.ticks,
       seconds: this.seconds,
       renderDistance: rd,
       selection: t && !this.hideHud ? { x: t.x, y: t.y, z: t.z, box: selectionBox(t.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.min(9, Math.floor(this.mining.progress * 10)) } : null,
       held: this.inventory.selectedId,
-      showHand: !this.hideHud && this.state !== 'dead',
+      bowPull: this.bowCharge > 0 ? Math.min(1, this.bowCharge) : 0,
+      showHand: !this.hideHud && this.state !== 'dead' && !this.thirdPerson,
       underwater: player.headInWater,
       inLava: player.headInLava,
       handSwing: this.swing > 0 ? 1 - this.swing : 0,
@@ -498,7 +539,11 @@ export class Game {
       placeAnim: this.placeAnim,
       light: [this.world.getSkyLight(ex, ey, ez), this.world.getBlockLight(ex, ey, ez)],
       particles: this.particles.list,
-      entities: this.entities.renderList(this.seconds),
+      entities: this.renderEntities(),
+      rain: this.weather.rain,
+      flash: this.weather.flash,
+      weatherMesh: this.weather.buildMesh(this.world, camPos, this.seconds, this.world.generator),
+      boltMesh: this.weather.buildBoltMesh(camPos),
       eating: this.eating ? 1 : 0,
     });
 
@@ -507,6 +552,25 @@ export class Game {
     this.ui.updateStatus(player, this.creative);
     this.ui.setTint(player.headInLava ? 'lava' : player.headInWater ? 'water' : '');
     this.ui.setDebug(this.showDebug, this.showDebug ? this.debugText() : '');
+  }
+
+  // Mobs, items and projectiles plus player models (yourself in third person
+  // and other players in multiplayer).
+  renderEntities() {
+    const list = this.entities.renderList(this.seconds);
+    const p = this.player;
+    if (this.thirdPerson && !p.dead) {
+      const light = [this.world.getSkyLight(Math.floor(p.pos[0]), Math.floor(p.pos[1] + 1), Math.floor(p.pos[2])),
+        this.world.getBlockLight(Math.floor(p.pos[0]), Math.floor(p.pos[1] + 1), Math.floor(p.pos[2]))];
+      list.push(...this.playerRenderer.renderEntries({
+        pos: p.pos, yaw: p.yaw, headYaw: 0, pitch: p.pitch,
+        walkPhase: p.walkDist * 3.2, walkAmount: Math.min(1, Math.hypot(p.vel[0], p.vel[2]) / 4.3),
+        swing: this.swing > 0 ? 1 - this.swing : 0, sneaking: p.sneaking, variant: this.skinIndex,
+        armor: this.inventory.armor.map((a) => a?.id || 0), held: this.inventory.selectedId, light, hurt: p.hurtTime > 0,
+      }, this.seconds));
+    }
+    if (this.net) list.push(...this.net.renderEntries(this.seconds));
+    return list;
   }
 
   updateLook() {
@@ -543,11 +607,15 @@ export class Game {
       else if (e.type === 'hurt') this.sound.hurt();
       else if (e.type === 'splash') this.sound.splash();
       else if (e.type === 'land') this.sound.step(B.STONE);
+      else if (e.type === 'armorHit') this.damageArmor(e.amount);
       else if (e.type === 'death') {
         if (this.state === 'inventory') this.ui.closeInventory();
         this.state = 'dead';
         this.mining = null;
         this.eating = null;
+        this.bowCharge = -1;
+        this.sleeping = null;
+        this.dropEverything();
         this.input.unlock();
         this.ui.show('death');
       }
@@ -608,11 +676,21 @@ export class Game {
       this.mining = null;
     }
 
-    // Right button: eat (hold), use or place.
+    // Right button: draw a bow, eat (hold), use or place.
     const held = inv.selectedStack;
     const heldItem = held ? ITEMS.get(held.id) : null;
-    const interactive = t && !p.sneaking && this.isInteractive(t.id, heldItem);
-    if (input.buttons.has(2) && heldItem?.food && !interactive && p.hunger < 20) {
+    const interactive = t && !p.sneaking && isInteractive(this, t, heldItem);
+    if (heldItem?.bow && !interactive) {
+      if (input.buttons.has(2)) {
+        if (this.bowCharge < 0 && (this.creative || inv.count(I.ARROW) > 0)) this.bowCharge = 0;
+        if (this.bowCharge >= 0) this.bowCharge += dt;
+      } else if (this.bowCharge >= 0) {
+        this.shootArrow(this.bowCharge);
+        this.bowCharge = -1;
+      }
+      this.eating = null;
+    } else if (input.buttons.has(2) && heldItem?.food && !interactive && !this.targetMob && (p.hunger < 20 || heldItem.food.always || this.creative)) {
+      this.bowCharge = -1;
       const e = this.eating;
       if (!e || e.slot !== inv.selected || e.id !== held.id) this.eating = { slot: inv.selected, id: held.id, time: 0, sound: 0 };
       const eat = this.eating;
@@ -624,15 +702,28 @@ export class Game {
       }
       if (eat.time >= 1.6) {
         p.eat(heldItem.food);
-        if (!this.creative) inv.take(inv.selected, 1);
+        if (!this.creative) {
+          inv.take(inv.selected, 1);
+          if (heldItem.leaves) {
+            if (!inv.slots[inv.selected]) inv.slots[inv.selected] = { id: heldItem.leaves, count: 1 };
+            else if (inv.add(heldItem.leaves, 1)) this.entities.dropItem({ id: heldItem.leaves, count: 1 }, ...p.eye());
+          }
+        }
         this.sound.burp();
         this.eating = null;
         this.useCooldown = 0.3;
       }
     } else {
       this.eating = null;
+      this.bowCharge = -1;
       if (pressed.includes(2) || (input.buttons.has(2) && this.useCooldown <= 0)) {
-        if (t && !this.targetMob) this.useBlock(t);
+        let used = false;
+        if (this.targetMob) used = this.useOnMob(this.targetMob);
+        else if (t) used = useOnBlock(this, t);
+        if (!used && !this.targetMob) {
+          if (heldItem?.bucket !== undefined || held?.id === B.LILY_PAD) used = this.useOnLiquid(heldItem);
+          if (!used) useInAir(this);
+        }
         this.useCooldown = pressed.includes(2) ? 0.3 : 0.22;
       }
     }
@@ -645,11 +736,6 @@ export class Game {
     }
   }
 
-  isInteractive(id, heldItem) {
-    const b = BLOCKS[id];
-    return id === B.CRAFTING_TABLE || !!b.container || (id === B.TNT && heldItem?.id === I.FLINT_AND_STEEL);
-  }
-
   attack(mob) {
     const p = this.player;
     const item = ITEMS.get(this.inventory.selectedId);
@@ -658,37 +744,259 @@ export class Game {
       dmg *= 1.5; // critical hit while falling
       this.particles.smoke(mob.pos[0], mob.pos[1] + mob.h, mob.pos[2], 4, 0.3, 0.06, 0.1);
     }
-    const wasAlive = !mob.dead;
-    if (mob.hurt(dmg, p.pos, this.entities) && wasAlive && mob.dead && !this.creative) {
-      for (const [id, min, max] of mob.def.drops) {
-        const n = min + Math.floor(Math.random() * (max - min + 1));
-        if (n > 0 && this.inventory.add(id, n) < n) this.sound.pop();
-      }
-    }
+    if (this.net && !this.net.isAuthority) this.net.sendMobHit(mob.id, dmg, p.pos);
+    else mob.hurt(dmg, p.pos, this.entities, 'player');
+    if (item?.tool) this.damageHeld(item.tool.type === 'sword' ? 1 : 2);
     p.addExhaustion(0.1, this.creative);
     this.attackCooldown = 0.25;
     this.swing = 1;
   }
 
+  // Right-click on a mob: shear sheep, milk cows.
+  useOnMob(mob) {
+    const inv = this.inventory;
+    const it = inv.selectedStack ? ITEMS.get(inv.selectedStack.id) : null;
+    if (!it) return false;
+    if (it.id === I.SHEARS && mob.type === 'sheep' && !mob.sheared) {
+      mob.sheared = true;
+      mob.woolTimer = 60 + Math.random() * 60;
+      const n = 1 + Math.floor(Math.random() * 3);
+      this.entities.dropItem({ id: mob.woolColor ?? B.WHITE_WOOL, count: n }, mob.pos[0], mob.pos[1] + 1, mob.pos[2]);
+      this.sound.shear?.();
+      this.damageHeld(1);
+      this.net?.sendMobState?.(mob);
+      this.swing = 1;
+      return true;
+    }
+    if (it.id === I.BUCKET && mob.type === 'cow') {
+      if (!this.creative) {
+        inv.take(inv.selected, 1);
+        if (!inv.slots[inv.selected]) inv.slots[inv.selected] = { id: I.MILK_BUCKET, count: 1 };
+        else if (inv.add(I.MILK_BUCKET, 1)) this.entities.dropItem({ id: I.MILK_BUCKET, count: 1 }, ...this.player.eye());
+      }
+      this.sound.splash();
+      this.swing = 1;
+      return true;
+    }
+    return false;
+  }
+
+  // Buckets and lily pads target the first liquid block in reach.
+  liquidTarget() {
+    const p = this.player;
+    return raycast((x, y, z) => this.world.getBlock(x, y, z), p.eye(), p.lookDir(), 5, true);
+  }
+
+  useOnLiquid(heldItem) {
+    const hit = this.liquidTarget();
+    if (!hit) return false;
+    if (this.inventory.selectedId === B.LILY_PAD) {
+      if (hit.id !== B.WATER || this.world.getBlock(hit.x, hit.y + 1, hit.z) !== B.AIR) return false;
+      this.setBlockSynced(hit.x, hit.y + 1, hit.z, B.LILY_PAD);
+      if (!this.creative) this.inventory.take(this.inventory.selected, 1);
+      this.sound.place(B.TALL_GRASS);
+      return true;
+    }
+    return heldItem?.bucket !== undefined && useOnBlock(this, { ...hit, normal: hit.normal });
+  }
+
+  shootArrow(charge) {
+    const p = this.player;
+    const power = Math.min(1, (charge * charge + charge * 2) / 3);
+    if (power < 0.1) return;
+    const inv = this.inventory;
+    if (!this.creative) {
+      const slot = inv.slots.findIndex((s) => s?.id === I.ARROW);
+      if (slot < 0) return;
+      inv.take(slot, 1);
+    }
+    const eye = p.eye(), d = p.lookDir();
+    const speed = 56 * power;
+    const spread = 0.01;
+    const v = [d[0] + (Math.random() - 0.5) * spread, d[1] + (Math.random() - 0.5) * spread, d[2] + (Math.random() - 0.5) * spread];
+    const dmg = Math.ceil(power * 6) + (power >= 1 ? Math.floor(Math.random() * 3) : 0);
+    const a = this.entities.shoot('arrow', [eye[0] + d[0] * 0.5, eye[1] - 0.1, eye[2] + d[2] * 0.5], [v[0] * speed, v[1] * speed, v[2] * speed], 'player', dmg);
+    a.pickup = !this.creative;
+    this.net?.sendProjectile?.(a);
+    this.damageHeld(1);
+    this.sound.bow?.(power);
+  }
+
+  // Wears down the held tool; it breaks when used up.
+  damageHeld(n) {
+    if (this.creative) return;
+    const inv = this.inventory;
+    const s = inv.selectedStack;
+    const it = s && ITEMS.get(s.id);
+    if (!it?.durability) return;
+    s.dmg = (s.dmg || 0) + n;
+    if (s.dmg >= it.durability) {
+      inv.slots[inv.selected] = null;
+      this.sound.toolBreak?.();
+      this.particles.burstItem?.(this.player.eye(), s.id);
+    }
+    this.ui.hotbarSig = '';
+  }
+
+  damageArmor(amount) {
+    const inv = this.inventory;
+    const wear = Math.max(1, Math.floor(amount / 4));
+    inv.armor.forEach((a, i) => {
+      if (!a) return;
+      const it = ITEMS.get(a.id);
+      a.dmg = (a.dmg || 0) + wear;
+      if (a.dmg >= it.durability) {
+        inv.armor[i] = null;
+        this.sound.toolBreak?.();
+      }
+    });
+  }
+
+  // Picks up a dropped item entity. Returns true if it was fully taken.
+  pickupItem(e) {
+    if (e.removed) return true;
+    const before = e.stack.count;
+    const left = this.inventory.addStack(e.stack);
+    if (left < before) {
+      this.sound.pop();
+      this.ui.hotbarSig = '';
+      if (this.state === 'inventory') this.ui.refreshInventory();
+    }
+    if (left <= 0) { e.removed = true; this.net?.sendPickup?.(e); return true; }
+    e.stack.count = left;
+    return false;
+  }
+
+  gainXP(n) {
+    if (this.player.addXP(n)) this.sound.levelUp?.();
+    else this.sound.orb?.();
+  }
+
+  teleportPlayer(x, y, z) {
+    const p = this.player;
+    p.pos = [x, y, z];
+    p.vel = [0, 0, 0];
+    p.fallDistance = 0;
+    p.damage(5, this.pendingEvents, this.creative, { bypassArmor: true });
+    this.sound.teleport?.();
+  }
+
+  projectileHitPlayer(pr) {
+    const p = this.player;
+    const dmg = pr.type === 'arrow' ? pr.damage : 0;
+    if (dmg > 0) p.damage(dmg, this.pendingEvents, this.creative);
+    p.knockback(pr.vel[0], pr.vel[2], 5);
+  }
+
+  // Throws the selected item (Q) or the whole stack (Ctrl+Q).
+  dropSelected(all) {
+    const inv = this.inventory;
+    const s = inv.selectedStack;
+    if (!s) return;
+    const n = all ? s.count : 1;
+    const out = { ...s, count: n };
+    inv.take(inv.selected, n);
+    const p = this.player, eye = p.eye(), d = p.lookDir();
+    const e = this.entities.dropItem(out, eye[0] + d[0] * 0.3, eye[1] - 0.3, eye[2] + d[2] * 0.3, [d[0] * 5, d[1] * 5 + 2, d[2] * 5]);
+    e.pickupDelay = 2;
+    this.ui.hotbarSig = '';
+  }
+
+  // Death: everything in the inventory scatters on the ground.
+  dropEverything() {
+    if (this.creative) return;
+    const p = this.player;
+    const inv = this.inventory;
+    for (const list of [inv.slots, inv.armor]) {
+      list.forEach((s, i) => {
+        if (!s) return;
+        const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 3;
+        this.entities.dropItem({ ...s }, p.pos[0], p.pos[1] + 1, p.pos[2], [Math.cos(a) * sp, 3 + Math.random() * 2, Math.sin(a) * sp]);
+        list[i] = null;
+      });
+    }
+    const xp = Math.min(100, p.xpLevel * 7);
+    if (xp) this.entities.dropXP(xp, p.pos[0], p.pos[1] + 1, p.pos[2]);
+  }
+
+  // Beds: sleep through the night (and set the spawn point).
+  trySleep(x, y, z) {
+    const p = this.player;
+    const day = this.ticks > 12500 && this.ticks < 23500 ? false : true;
+    p.spawn = [x + 0.5, y + 1, z + 0.5];
+    if (day) {
+      this.ui.toast('You can only sleep at night (respawn point set)');
+      return;
+    }
+    const near = this.entities.list.some((e) => e.kind === 'mob' && e.def.hostile && !e.dead && Math.hypot(e.pos[0] - x, e.pos[1] - y, e.pos[2] - z) < 8);
+    if (near) {
+      this.ui.toast('You may not rest now; there are monsters nearby');
+      return;
+    }
+    this.sleeping = { time: 0, bed: [x, y, z], from: [...p.pos] };
+    p.pos = [x + 0.5, y + 0.6, z + 0.5];
+    p.vel = [0, 0, 0];
+    this.ui.setSleepFade(0.01);
+  }
+
+  updateSleep(dt) {
+    const s = this.sleeping;
+    if (!s) return;
+    s.time += dt;
+    this.ui.setSleepFade(Math.min(1, s.time / 2.5));
+    if (s.time >= 3) {
+      this.ticks = 0;
+      this.net?.sendTime?.(this.ticks);
+      this.sleeping = null;
+      this.player.pos = [s.bed[0] + 0.5, s.bed[1] + 0.6, s.bed[2] + 0.5];
+      this.ui.setSleepFade(0);
+      this.ui.toast('Good morning!');
+    }
+  }
+
   breakBlock(x, y, z) {
     const id = this.world.getBlock(x, y, z);
     if (id === B.AIR || (!this.creative && BLOCKS[id].hardness < 0)) return;
-    if (!this.world.setBlock(x, y, z, B.AIR)) return;
+    if (!this.setBlockSynced(x, y, z, B.AIR)) return;
     this.sound.breakBlock(id);
     this.particles.burst(x, y, z, id);
     const be = BLOCKS[id].container ? this.world.removeBlockEntity(x, y, z) : null;
-    if (be) for (const s of be.slots) if (s) this.inventory.add(s.id, s.count);
-    if (!this.creative) this.giveDrop(id);
+    if (be) for (const st of be.slots) if (st) this.entities.dropItem(st, x + 0.5, y + 0.5, z + 0.5);
+    // Doors and beds are two blocks: take the other half with this one.
+    const partner = partnerOf(id, x, y, z);
+    if (partner) {
+      const pid = this.world.getBlock(...partner);
+      if (BLOCKS[pid].door || BLOCKS[pid].bed) {
+        this.setBlockSynced(...partner, B.AIR);
+        if (!this.creative && BLOCKS[id].drop === null) this.dropBlockLoot(pid, ...partner, this.inventory.selectedId);
+      }
+    }
+    if (!this.creative) {
+      this.dropBlockLoot(id, x, y, z, this.inventory.selectedId);
+      const tool = ITEMS.get(this.inventory.selectedId)?.tool;
+      if (tool && BLOCKS[id].hardness > 0) this.damageHeld(tool.type === 'sword' ? 2 : 1);
+    }
     this.blockUpdates(x, y, z);
     this.flowWater(x, y, z);
   }
 
-  giveDrop(id) {
-    let got = false;
-    for (const [item, n] of blockDrops(id, this.inventory.selectedId)) {
-      if (this.inventory.add(item, n) < n) got = true;
+  // Items (and experience) a broken block leaves behind.
+  dropBlockLoot(id, x, y, z, heldId) {
+    for (const [item, n] of blockDrops(id, heldId)) {
+      this.entities.dropItem({ id: item, count: n }, x + 0.5, y + 0.3, z + 0.5, [(Math.random() - 0.5) * 2, 2.5, (Math.random() - 0.5) * 2]);
     }
-    if (got) this.sound.pop();
+    const xp = BLOCKS[id].xp;
+    if (xp && blockDrops(id, heldId, () => 0.5).length) {
+      this.entities.dropXP(xp[0] + Math.floor(Math.random() * (xp[1] - xp[0] + 1)), x + 0.5, y + 0.5, z + 0.5);
+    }
+  }
+
+  // Every block change made by the player or game rules goes through here so
+  // it can be shared with other players.
+  setBlockSynced(x, y, z, id) {
+    const ok = this.world.setBlock(x, y, z, id);
+    if (ok) this.net?.sendBlock(x, y, z, id);
+    return ok;
   }
 
   canStay(id, x, y, z) {
@@ -710,87 +1018,20 @@ export class Game {
     if (b.support === 'lantern') return IS_SOLID[w.getBlock(x, y - 1, z)] === 1;
     if (b.support === 'hanging') return IS_SOLID[w.getBlock(x, y + 1, z)] === 1 || w.getBlock(x, y + 1, z) === B.OAK_FENCE;
     if (b.support === 'farmland') return w.getBlock(x, y - 1, z) === B.FARMLAND;
+    if (b.support === 'mushroom') return IS_SOLID[w.getBlock(x, y - 1, z)] === 1;
+    if (b.support === 'water') return w.getBlock(x, y - 1, z) === B.WATER;
+    if (b.support === 'wall') {
+      const [ax, ay, az] = b.attach;
+      return IS_SOLID[w.getBlock(x + ax, y + ay, z + az)] === 1;
+    }
+    if (b.support === 'door_upper') return !!BLOCKS[w.getBlock(x, y - 1, z)].door;
+    if (b.support === 'sugar_cane') {
+      const below = w.getBlock(x, y - 1, z);
+      if (below === B.SUGAR_CANE) return true;
+      if (!CANE_SOIL.has(below)) return false;
+      return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.getBlock(x + dx, y - 1, z + dz) === B.WATER);
+    }
     return true;
-  }
-
-  useBlock(t) {
-    const w = this.world;
-    const p = this.player;
-    const inv = this.inventory;
-    const s = inv.selectedStack;
-    const it = s ? ITEMS.get(s.id) : null;
-    if (!p.sneaking) {
-      if (t.id === B.CRAFTING_TABLE) {
-        this.openInventory('table');
-        return;
-      }
-      if (BLOCKS[t.id].container) {
-        this.openContainer(t.x, t.y, t.z);
-        return;
-      }
-    }
-    if (t.id === B.TNT && it?.id === I.FLINT_AND_STEEL) {
-      w.setBlock(t.x, t.y, t.z, B.AIR);
-      this.entities.primeTNT(t.x, t.y, t.z, 4);
-      this.swing = 1;
-      return;
-    }
-    if (!it) return;
-    const above = w.getBlock(t.x, t.y + 1, t.z);
-    if (it.spawns) {
-      const x = t.x + t.normal[0], y = t.y + t.normal[1], z = t.z + t.normal[2];
-      this.entities.spawn(it.spawns, x + 0.5, y, z + 0.5);
-      if (!this.creative) inv.take(inv.selected, 1);
-      this.swing = 1;
-      return;
-    }
-    if (it.tool?.type === 'hoe' && t.face === 2 && above === B.AIR && [B.GRASS, B.DIRT, B.DIRT_PATH].includes(t.id)) {
-      w.setBlock(t.x, t.y, t.z, B.FARMLAND);
-      this.sound.place(B.DIRT);
-      this.swing = 1;
-      return;
-    }
-    if (it.plants && t.id === B.FARMLAND && t.face === 2 && above === B.AIR) {
-      w.setBlock(t.x, t.y + 1, t.z, it.plants);
-      if (!this.creative) inv.take(inv.selected, 1);
-      this.sound.place(B.TALL_GRASS);
-      this.swing = 1;
-      return;
-    }
-    if (!isBlockItem(s.id)) return;
-    let id = s.id;
-    let x, y, z, face = t.face;
-    if (BLOCKS[t.id].replaceable) {
-      x = t.x; y = t.y; z = t.z; face = 2;
-    } else {
-      x = t.x + t.normal[0]; y = t.y + t.normal[1]; z = t.z + t.normal[2];
-    }
-    if (y < 0 || y >= CHUNK_HEIGHT) return;
-    if (!BLOCKS[w.getBlock(x, y, z)].replaceable) return;
-    if (BLOCKS[id].shape === 'torch') {
-      id = WALL_TORCH_BY_FACE[face];
-      if (!id) return;
-    }
-    if (id === B.LANTERN && face === 3) id = B.HANGING_LANTERN;
-    const b = BLOCKS[id];
-    if (b.facing >= 0 && b.baseId !== undefined) {
-      const d = p.lookDir();
-      const look = Math.abs(d[0]) > Math.abs(d[2]) ? (d[0] > 0 ? 0 : 1) : (d[2] > 0 ? 2 : 3);
-      id = orientedBlock(b.baseId, b.shape === 'stairs' ? look : [1, 0, 3, 2][look]);
-    }
-    if (!this.canStay(id, x, y, z)) return;
-    if (BLOCKS[id].solid && p.intersectsBlock(x, y, z)) return;
-    for (const e of this.entities.list) {
-      if (e.kind === 'mob' && BLOCKS[id].solid && Math.abs(e.pos[0] - x - 0.5) < e.hw + 0.5 && Math.abs(e.pos[2] - z - 0.5) < e.hw + 0.5 && e.pos[1] < y + 1 && e.pos[1] + e.h > y) return;
-    }
-    if (!w.setBlock(x, y, z, id)) return;
-    if (BLOCKS[id].container === 'furnace') w.setBlockEntity(x, y, z, newFurnace());
-    else if (BLOCKS[id].container === 'chest') w.setBlockEntity(x, y, z, newChest());
-    if (!this.creative) inv.take(inv.selected, 1);
-    this.sound.place(id);
-    this.swing = 1;
-    this.placeAnim = 1;
-    this.blockUpdates(x, y, z);
   }
 
   // Block physics after a change at (x, y, z): unsupported plants/torches
@@ -806,15 +1047,15 @@ export class Game {
       if (id === B.AIR) continue;
       let changed = false;
       if (!this.canStay(id, qx, qy, qz)) {
-        w.setBlock(qx, qy, qz, B.AIR);
-        if (!this.creative) this.giveDrop(id);
+        this.setBlockSynced(qx, qy, qz, B.AIR);
+        if (!this.creative && !BLOCKS[id].door) this.dropBlockLoot(id, qx, qy, qz, 0);
         changed = true;
       } else if (BLOCKS[id].falls) {
         let ny = qy;
         while (ny > 0 && BLOCKS[w.getBlock(qx, ny - 1, qz)].replaceable) ny--;
         if (ny !== qy) {
-          w.setBlock(qx, qy, qz, B.AIR);
-          w.setBlock(qx, ny, qz, id);
+          this.setBlockSynced(qx, qy, qz, B.AIR);
+          this.setBlockSynced(qx, ny, qz, id);
           for (const [dx, dy, dz] of NEIGHBOURS) queue.push([qx + dx, ny + dy, qz + dz]);
           changed = true;
         }
@@ -842,7 +1083,7 @@ export class Game {
       seen.add(key);
       const cur = w.getBlock(qx, qy, qz);
       if (cur !== B.AIR && !(BLOCKS[cur].replaceable && !BLOCKS[cur].liquid)) continue;
-      if (!w.setBlock(qx, qy, qz, B.WATER)) continue;
+      if (!this.setBlockSynced(qx, qy, qz, B.WATER)) continue;
       budget--;
       const below = w.getBlock(qx, qy - 1, qz);
       if (BLOCKS[below].replaceable && !BLOCKS[below].liquid) {

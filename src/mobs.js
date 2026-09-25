@@ -43,9 +43,9 @@ export const MOBS = {
     drops: [[40, 1, 1], [I.RAW_MUTTON, 1, 2]], sound: 'sheep',
     parts: [
       { kind: 'body', box: [-4, 12, -8, 4, 18, 8], uv: [0, 14] },
-      { kind: 'body', box: [-6, 10, -10, 6, 20, 10], uv: [0, 36], uvBox: [8, 6, 16] },
+      { kind: 'body', box: [-6, 10, -10, 6, 20, 10], uv: [0, 36], uvBox: [8, 6, 16], fleece: true },
       { kind: 'head', box: [-3, 15, 7, 3, 21, 15], uv: [0, 0], pivot: [0, 18, 8] },
-      { kind: 'head', box: [-4, 15, 7, 4, 22, 14], uv: [28, 0], uvBox: [6, 6, 6], pivot: [0, 18, 8] },
+      { kind: 'head', box: [-4, 15, 7, 4, 22, 14], uv: [28, 0], uvBox: [6, 6, 6], pivot: [0, 18, 8], fleece: true },
       { kind: 'legFL', box: [-5, 0, 3, -1, 12, 7], uv: [48, 12], pivot: [-3, 12, 5] },
       { kind: 'legFR', box: [1, 0, 3, 5, 12, 7], uv: [48, 12], pivot: [3, 12, 5] },
       { kind: 'legBL', box: [-5, 0, -7, -1, 12, -3], uv: [48, 12], pivot: [-3, 12, -5] },
@@ -404,12 +404,79 @@ function paintVillager() {
   return s;
 }
 
+// The player character: an original explorer in a few colour variants.
+export const PLAYER_COLORS = [
+  { shirt: [60, 160, 80], pants: [96, 70, 44], hair: [200, 160, 80] },
+  { shirt: [196, 60, 50], pants: [50, 50, 60], hair: [30, 24, 20] },
+  { shirt: [58, 120, 196], pants: [60, 56, 110], hair: [70, 46, 26] },
+  { shirt: [230, 190, 50], pants: [40, 70, 120], hair: [120, 60, 30] },
+  { shirt: [150, 70, 180], pants: [60, 60, 60], hair: [20, 20, 22] },
+  { shirt: [240, 140, 40], pants: [70, 90, 60], hair: [160, 90, 50] },
+  { shirt: [230, 230, 230], pants: [40, 40, 50], hair: [220, 210, 190] },
+  { shirt: [40, 170, 170], pants: [110, 80, 60], hair: [90, 40, 20] },
+];
+
+function paintPlayer(variant) {
+  const c = PLAYER_COLORS[variant];
+  const skinTone = [212, 160, 126];
+  const skin = mottle(90 + variant, 3, skinTone, [196, 144, 110], 0.4);
+  const shirt = mottle(100 + variant, 3, c.shirt, shade(c.shirt, 0.82), 0.6);
+  const pants = mottle(110 + variant, 3, c.pants, shade(c.pants, 0.8), 0.5);
+  const s = paintHumanoid(`player${variant}`, skin, shirt, pants, [60, 50, 44], (sk, f) => {
+    sk.rect([f[0], f[1], 8, 2], c.hair, 4);
+    sk.px(f, 0, 2, c.hair); sk.px(f, 7, 2, c.hair);
+    eyes(sk, f, 4, 1, 5, [250, 250, 250], [50, 80, 150]);
+    sk.rect([f[0] + 3, f[1] + 5, 2, 1], shade(skinTone, 0.85), 0);
+    sk.rect([f[0] + 2, f[1] + 6, 4, 1], [150, 90, 80], 0);
+  });
+  // Hair on top and at the back of the head; a belt on the shirt.
+  s.box(0, 0, 8, 8, 8, (fc, x, y, w, h, sx, sy) => {
+    if (fc === TOP || fc === 5 || ((fc === 0 || fc === 1) && y < 3)) return c.hair;
+    return fc === FRONT ? s.get(sx, sy) : skin(sx, sy);
+  }, 0);
+  s.box(16, 16, 8, 12, 4, (fc, x, y, w, h, sx, sy) => (y === h - 2 ? [60, 40, 24] : s.get(sx, sy)), 0);
+  return s;
+}
+
+// Armour worn by players: the humanoid layout painted in the material's
+// colours (drawn on slightly larger boxes around the body).
+const ARMOR_COLORS = {
+  leather: [[150, 88, 44], [120, 66, 30]],
+  iron: [[206, 206, 206], [160, 160, 164]],
+  golden: [[246, 206, 60], [206, 150, 30]],
+  diamond: [[76, 222, 206], [40, 160, 150]],
+};
+function paintArmor(material) {
+  const [base, dark] = ARMOR_COLORS[material];
+  const s = new Skin(`armor_${material}`);
+  const metal = mottle(130 + base[0], 2, base, dark, 0.7);
+  const fn = (fc, x, y, w, h, sx, sy) => (y === 0 || x === 0 ? mixc(metal(sx, sy), [255, 255, 255], 0.2) : metal(sx, sy));
+  s.box(0, 0, 8, 8, 8, (fc, x, y, w, h, sx, sy) => {
+    // Helmet: open face.
+    if (fc === FRONT && y >= 2 && x >= 1 && x <= 6) return null;
+    if (fc === BOTTOM) return null;
+    return fn(fc, x, y, w, h, sx, sy);
+  }, 6);
+  s.box(16, 16, 8, 12, 4, fn, 6);
+  s.box(40, 16, 4, 12, 4, (fc, x, y, w, h, sx, sy) => (y < 5 ? fn(fc, x, y, w, h, sx, sy) : null), 6);
+  s.box(0, 16, 4, 12, 4, fn, 6);
+  return s;
+}
+export const ARMOR_MATERIAL_LIST = ['leather', 'iron', 'golden', 'diamond'];
+
+const MOB_PAINTERS = [paintPig, paintCow, paintSheep, paintChicken, paintZombie, paintCreeper, paintVillager];
+export const PLAYER_SKIN_BASE = MOB_PAINTERS.length;
+export const ARMOR_SKIN_BASE = PLAYER_SKIN_BASE + PLAYER_COLORS.length;
+
 let skinCache = null;
 export function mobSkins() {
   if (skinCache) return skinCache;
-  const skins = [paintPig(), paintCow(), paintSheep(), paintChicken(), paintZombie(), paintCreeper(), paintVillager()];
+  const skins = [...MOB_PAINTERS.map((f) => f()), ...PLAYER_COLORS.map((_, i) => paintPlayer(i)), ...ARMOR_MATERIAL_LIST.map(paintArmor)];
   const pixels = new Uint8Array(skins.length * SKIN * SKIN * 4);
   skins.forEach((s, i) => pixels.set(s.data, i * SKIN * SKIN * 4));
   skinCache = { pixels, count: skins.length };
   return skinCache;
 }
+
+// Model used for other players and the third-person view.
+export const PLAYER_MODEL = { parts: humanoid(), width: 0.6, height: 1.8 };

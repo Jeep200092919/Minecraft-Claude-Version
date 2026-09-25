@@ -661,3 +661,37 @@ void main() {
   if (uUnderwater > 0.5) col *= vec3(0.55, 0.8, 1.0);
   fragColor = vec4(col, 1.0);
 }`;
+
+// ---- Weather: rain, snow and lightning -------------------------------------
+
+export const WEATHER_VS = `
+precision highp float;
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec3 aUV;
+layout(location=2) in float aAlpha;
+uniform mat4 uViewProj;
+out vec3 vUV;
+out float vAlpha;
+void main() {
+  gl_Position = uViewProj * vec4(aPos, 1.0);
+  vUV = aUV;
+  vAlpha = aAlpha;
+}`;
+
+export const WEATHER_FS = `
+precision highp float;
+precision highp sampler2DArray;
+in vec3 vUV;
+in float vAlpha;
+uniform sampler2DArray uTex;
+uniform vec3 uLight;
+uniform float uLinear;
+out vec4 fragColor;
+void main() {
+  // Level 0 only: mipmaps would smear the thin streaks into a haze.
+  vec4 t = textureLod(uTex, vec3(fract(vUV.xy), vUV.z), 0.0);
+  if (t.a < 0.05) discard;
+  vec3 c = t.rgb;
+  if (uLinear > 0.5) c = pow(c, vec3(2.2));
+  fragColor = vec4(c * uLight, t.a * vAlpha);
+}`;

@@ -3,7 +3,7 @@
 // seed and on column data (height/biome), never on generated blocks, so every
 // chunk places its own part of a village without its neighbours existing.
 import { SEA_LEVEL, CHUNK_HEIGHT } from './constants.js';
-import { B, I, orientedBlock } from './blocks.js';
+import { B, I, BLOCKS, orientedBlock } from './blocks.js';
 import { hashCoords, mulberry32 } from './noise.js';
 
 const REGION = 224; // one village attempt per REGION x REGION blocks
@@ -27,8 +27,11 @@ function oriented(baseId, f) {
 }
 
 const WALL_TORCH = [B.WALL_TORCH_PX, B.WALL_TORCH_NX, B.WALL_TORCH_PZ, B.WALL_TORCH_NZ];
-const REPLACEABLE = new Set([B.AIR, B.WATER, B.TALL_GRASS, B.DANDELION, B.POPPY, B.CORNFLOWER, B.OXEYE_DAISY,
-  B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.SNOW]);
+// Blocks that village construction clears away: plants, leaves, snow.
+const CLEARABLE = new Set([B.AIR, B.WATER, B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.SNOW, B.SNOW_LAYER,
+  B.SUGAR_CANE, B.PUMPKIN, B.MELON, B.LILY_PAD]);
+for (let id = 0; id < 256; id++) if (BLOCKS[id].shape === 'cross') CLEARABLE.add(id);
+const REPLACEABLE = CLEARABLE;
 
 export class Villages {
   constructor(gen) {
@@ -343,9 +346,11 @@ export class Villages {
     const backWin = big ? [2, w - 3] : [door];
     for (const lx of backWin) set(lx, y + 2, d - 1, B.GLASS);
     if (big) { set(1, y + 2, 0, B.GLASS); set(w - 2, y + 2, 0, B.GLASS); }
-    // Doorway, a step of path in front of it and a torch beside it.
-    set(door, y + 1, 0, B.AIR);
-    set(door, y + 2, 0, B.AIR);
+    // A door (facing out of the house), a step of path in front of it and a
+    // torch beside it.
+    const doorFacing = face(2);
+    set(door, y + 1, 0, B.OAK_DOOR + doorFacing);
+    set(door, y + 2, 0, B.OAK_DOOR + 8 + doorFacing);
     const [fx, fz] = at(door, -1);
     ctx.set(fx, y, fz, B.DIRT_PATH);
     ctx.foundation(fx, y - 1, fz, B.DIRT);
@@ -373,9 +378,12 @@ export class Villages {
         set(lx, ry, d - 1, B.PLANKS);
       }
     }
-    // Furniture.
+    // Furniture: a bed along the back wall, a crafting table and a lantern.
     set(1, y + 1, d - 2, B.CRAFTING_TABLE);
-    set(w - 2, y + 1, d - 2, B.LANTERN);
+    set(1, y + 1, d - 3, B.LANTERN);
+    const bedFacing = face(2);
+    set(w - 2, y + 1, d - 3, B.BED + bedFacing);
+    set(w - 2, y + 1, d - 2, B.BED + 4 + bedFacing);
     if (big) {
       set(w - 2, y + 1, 1, oriented(B.FURNACE, face(1)));
       set(1, y + 1, 1, oriented(B.CHEST, face(0)));
@@ -393,9 +401,14 @@ export function villageLoot(x, y, z) {
     [I.APPLE, 1, 5],
     [I.WHEAT_SEEDS, 2, 8],
     [I.WHEAT, 2, 7],
+    [I.CARROT, 1, 4],
+    [I.POTATO, 1, 5],
     [I.IRON_INGOT, 1, 4],
     [I.COAL, 2, 8],
     [B.TORCH, 2, 8],
+    [I.EMERALD, 1, 3],
+    [I.BOOK, 1, 2],
+    [B.OAK_SAPLING, 1, 3],
     [I.DIAMOND, 1, 1], // rare: only rolled 10% of the time
   ];
   const slots = new Array(27).fill(null);

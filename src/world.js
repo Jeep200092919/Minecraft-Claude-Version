@@ -123,7 +123,7 @@ export class World {
     if (!edits) this.edits.set(c.key, (edits = new Map()));
     edits.set(idx, id);
     const key = `${x},${y},${z}`;
-    if (BLOCKS[id].crop !== undefined) this.crops.set(key, [x, y, z]);
+    if (BLOCKS[id].crop !== undefined || BLOCKS[id].sapling) this.crops.set(key, [x, y, z]);
     else this.crops.delete(key);
 
     this.relight(x, y, z);
@@ -351,7 +351,7 @@ export class World {
     this.generator.generate(c, this.edits.get(c.key));
     for (let i = 0; i < c.blocks.length; i++) {
       const id = c.blocks[i];
-      if (id >= B.WHEAT_0 && id <= B.WHEAT_3) {
+      if (id && (BLOCKS[id].crop !== undefined || BLOCKS[id].sapling)) {
         const x = cx * CHUNK_SIZE + (i & 15), y = i >> 8, z = cz * CHUNK_SIZE + ((i >> 4) & 15);
         this.crops.set(`${x},${y},${z}`, [x, y, z]);
       }

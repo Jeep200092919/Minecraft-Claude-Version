@@ -8,7 +8,7 @@ import { Player } from '../src/player.js';
 import { moveBody } from '../src/physics.js';
 import { newFurnace, tickFurnace } from '../src/gameplay.js';
 import { encodeBlockEntities, decodeBlockEntities } from '../src/storage.js';
-import { MOBS, mobSkins } from '../src/mobs.js';
+import { MOBS, mobSkins, PLAYER_SKIN_BASE, PLAYER_COLORS } from '../src/mobs.js';
 import { villageLoot } from '../src/villages.js';
 import { hashString } from '../src/noise.js';
 
@@ -130,7 +130,8 @@ test('bodies step up slabs but not full blocks', () => {
 
 test('every mob has a skin and sane stats', () => {
   const skins = mobSkins();
-  assert.equal(skins.count, Object.keys(MOBS).length);
+  assert.equal(skins.count, PLAYER_SKIN_BASE + PLAYER_COLORS.length + 4);
+  for (const m of Object.values(MOBS)) assert.ok(m.skin < PLAYER_SKIN_BASE);
   assert.equal(skins.pixels.length, skins.count * 64 * 64 * 4);
   for (const [name, m] of Object.entries(MOBS)) {
     assert.ok(m.health > 0 && m.width > 0 && m.height > 0, name);

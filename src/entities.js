@@ -1,10 +1,10 @@
 // Entities: mobs (animals, monsters, villagers) and primed TNT.
 // Handles AI, physics, spawning/despawning, combat and render data.
-import { B, BLOCKS, IS_SOLID } from './blocks.js';
+import { B, I, BLOCKS, ITEMS, IS_SOLID, isBlockItem } from './blocks.js';
 import { CHUNK_HEIGHT } from './constants.js';
 import { MOBS, buildPartMesh } from './mobs.js';
 import { moveBody, bodyBox } from './physics.js';
-import { buildBlockMesh } from './mesher.js';
+import { buildBlockMesh, buildExtrudedSprite, itemSpriteName } from './mesher.js';
 import { compose, translation, rotationX, rotationY, rotationZ, scaling } from './math.js';
 import { BIOME } from './worldgen.js';
 
@@ -52,9 +52,10 @@ class Mob {
     return this.deathTime >= 0;
   }
 
-  hurt(amount, from, mgr) {
+  hurt(amount, from, mgr, attacker = null) {
     if (this.dead || this.hurtTime > 0.35) return false;
     this.health -= amount;
+    if (attacker) this.lastAttacker = attacker;
     this.hurtTime = 0.5;
     if (from) {
       const dx = this.pos[0] - from[0], dz = this.pos[2] - from[2];
@@ -65,7 +66,10 @@ class Mob {
     }
     if (this.def.passive) this.panic = 4;
     mgr.game.sound.mob(this.def.sound, this.health <= 0 ? 'death' : 'hurt');
-    if (this.health <= 0) this.deathTime = 0;
+    if (this.health <= 0) {
+      this.deathTime = 0;
+      mgr.onMobDeath(this);
+    }
     return true;
   }
 }
@@ -80,6 +84,55 @@ class PrimedTNT {
     this.h = 0.98;
     this.fuse = fuse;
     this.onGround = false;
+  }
+}
+
+// An item lying in the world. It bobs and spins, merges with identical
+// stacks nearby and is picked up when the player walks over it.
+class ItemEntity {
+  constructor(stack, x, y, z, vel) {
+    this.id = nextId++;
+    this.kind = 'item';
+    this.stack = { ...stack };
+    this.pos = [x, y, z];
+    this.vel = vel || [(Math.random() - 0.5) * 2, 3, (Math.random() - 0.5) * 2];
+    this.hw = 0.125;
+    this.h = 0.25;
+    this.age = 0;
+    this.pickupDelay = 0.5;
+    this.onGround = false;
+    this.spin = Math.random() * Math.PI * 2;
+  }
+}
+
+class XPOrb {
+  constructor(value, x, y, z) {
+    this.id = nextId++;
+    this.kind = 'xp';
+    this.value = value;
+    this.pos = [x, y, z];
+    this.vel = [(Math.random() - 0.5) * 3, 3 + Math.random() * 2, (Math.random() - 0.5) * 3];
+    this.hw = 0.125;
+    this.h = 0.25;
+    this.age = 0;
+    this.onGround = false;
+  }
+}
+
+// Arrows and thrown items.
+class Projectile {
+  constructor(type, pos, vel, owner, damage) {
+    this.id = nextId++;
+    this.kind = 'projectile';
+    this.type = type; // arrow | snowball | egg | ender_pearl
+    this.pos = [...pos];
+    this.vel = [...vel];
+    this.owner = owner; // 'player', a player id, or a mob
+    this.damage = damage;
+    this.age = 0;
+    this.stuck = false;
+    this.hw = 0.1;
+    this.h = 0.2;
   }
 }
 
@@ -124,6 +177,29 @@ export class EntityManager {
     return m;
   }
 
+  // Drops an item stack into the world.
+  dropItem(stack, x, y, z, vel) {
+    if (!stack || stack.count <= 0) return null;
+    const e = new ItemEntity(stack, x, y, z, vel);
+    this.list.push(e);
+    return e;
+  }
+
+  // Splits XP into orbs like the original (bigger values, fewer orbs).
+  dropXP(amount, x, y, z) {
+    while (amount > 0) {
+      const v = amount >= 17 ? 17 : amount >= 7 ? 7 : amount >= 3 ? 3 : 1;
+      amount -= v;
+      this.list.push(new XPOrb(v, x, y, z));
+    }
+  }
+
+  shoot(type, pos, vel, owner, damage = 0) {
+    const p = new Projectile(type, pos, vel, owner, damage);
+    this.list.push(p);
+    return p;
+  }
+
   primeTNT(x, y, z, fuse) {
     const t = new PrimedTNT(x, y, z, fuse);
     this.list.push(t);
@@ -140,6 +216,19 @@ export class EntityManager {
       if (t !== null && t <= maxDist && (!best || t < best.t)) best = { entity: e, t };
     }
     return best;
+  }
+
+  // Loot and experience when a mob dies.
+  onMobDeath(m) {
+    const [x, y, z] = m.pos;
+    for (const [id, min, max] of m.def.drops) {
+      const n = min + Math.floor(Math.random() * (max - min + 1));
+      if (n > 0) this.dropItem({ id, count: n }, x, y + 0.5, z);
+    }
+    if (m.lastAttacker === 'player' || m.lastAttacker?.kind === 'player') {
+      const xp = m.def.hostile ? 5 : m.def.villager ? 0 : 1 + Math.floor(Math.random() * 3);
+      if (xp) this.dropXP(xp, x, y + 0.5, z);
+    }
   }
 
   countNear(pred, pos, radius) {
@@ -242,16 +331,159 @@ export class EntityManager {
 
     for (const e of this.list) {
       if (e.kind === 'tnt') this.updateTNT(e, dt);
+      else if (e.kind === 'item') this.updateItem(e, dt);
+      else if (e.kind === 'xp') this.updateXP(e, dt);
+      else if (e.kind === 'projectile') this.updateProjectile(e, dt);
       else this.updateMob(e, dt, sky);
     }
     // Remove finished / far away entities.
     this.list = this.list.filter((e) => {
       if (e.removed) return false;
       const dist = Math.hypot(e.pos[0] - p[0], e.pos[2] - p[2]);
-      if (e.kind === 'mob' && dist > (e.def.hostile ? 100 : 140)) return false;
+      if (e.kind === 'mob' && dist > (e.def.hostile ? 100 : 140) && !e.persistent) return false;
       if (!this.world.isReady(e.pos[0], e.pos[2])) return false;
       return true;
     });
+  }
+
+  updateItem(e, dt) {
+    const game = this.game;
+    const player = game.player;
+    e.age += dt;
+    e.spin += dt * 1.6;
+    if (e.age > 300) { e.removed = true; return; }
+    const w = this.world;
+    const feet = w.getBlock(Math.floor(e.pos[0]), Math.floor(e.pos[1] + 0.1), Math.floor(e.pos[2]));
+    if (feet === B.WATER) e.vel[1] = Math.min(e.vel[1] + 20 * dt, 1.2);
+    else e.vel[1] = Math.max(e.vel[1] - GRAVITY * 0.7 * dt, -30);
+    const damp = Math.pow(e.onGround ? 0.02 : 0.6, dt);
+    e.vel[0] *= damp; e.vel[2] *= damp;
+    // Pulled towards a nearby player once it can be picked up.
+    const dx = player.pos[0] - e.pos[0], dy = player.pos[1] + 0.6 - e.pos[1], dz = player.pos[2] - e.pos[2];
+    const d = Math.hypot(dx, dy, dz);
+    const alive = !player.dead && game.state !== 'dead';
+    if (alive && e.age > e.pickupDelay && d < 1.8) {
+      const pull = 10 * dt / Math.max(0.3, d);
+      e.vel[0] += dx * pull; e.vel[1] += dy * pull; e.vel[2] += dz * pull;
+      if (d < 0.8 && game.pickupItem(e)) return;
+    }
+    const res = moveBody(w, e, e.vel[0] * dt, e.vel[1] * dt, e.vel[2] * dt);
+    e.onGround = res.onGround;
+    // Merge with an identical stack nearby now and then.
+    if (e.onGround && Math.floor(e.age * 4) !== Math.floor((e.age - dt) * 4)) {
+      const max = ITEMS.get(e.stack.id)?.maxStack ?? 64;
+      for (const o of this.list) {
+        if (o === e || o.kind !== 'item' || o.removed || o.stack.id !== e.stack.id || o.stack.dmg || e.stack.dmg) continue;
+        if (Math.hypot(o.pos[0] - e.pos[0], o.pos[1] - e.pos[1], o.pos[2] - e.pos[2]) > 1) continue;
+        if (o.stack.count + e.stack.count > max) continue;
+        e.stack.count += o.stack.count;
+        e.age = Math.min(e.age, o.age);
+        o.removed = true;
+      }
+    }
+  }
+
+  updateXP(e, dt) {
+    const game = this.game;
+    const player = game.player;
+    e.age += dt;
+    if (e.age > 300) { e.removed = true; return; }
+    e.vel[1] = Math.max(e.vel[1] - GRAVITY * 0.5 * dt, -20);
+    const dx = player.pos[0] - e.pos[0], dy = player.pos[1] + 0.8 - e.pos[1], dz = player.pos[2] - e.pos[2];
+    const d = Math.hypot(dx, dy, dz);
+    if (!player.dead && e.age > 0.4 && d < 7) {
+      const pull = (1 - d / 7) * 40 * dt / Math.max(0.3, d);
+      e.vel[0] += dx * pull; e.vel[1] += dy * pull; e.vel[2] += dz * pull;
+      if (d < 0.9) { e.removed = true; game.gainXP(e.value); return; }
+    }
+    const damp = Math.pow(0.4, dt);
+    e.vel[0] *= damp; e.vel[2] *= damp;
+    moveBody(this.world, e, e.vel[0] * dt, e.vel[1] * dt, e.vel[2] * dt);
+  }
+
+  updateProjectile(p, dt) {
+    const game = this.game;
+    p.age += dt;
+    if (p.stuck) {
+      if (p.age > 60) p.removed = true;
+      // Stuck arrows can be picked back up.
+      const pl = game.player;
+      if (p.type === 'arrow' && p.pickup && Math.hypot(pl.pos[0] - p.pos[0], pl.pos[1] + 0.6 - p.pos[1], pl.pos[2] - p.pos[2]) < 1.2) {
+        if (game.pickupItem({ stack: { id: I.ARROW, count: 1 }, removed: false })) p.removed = true;
+      }
+      return;
+    }
+    if (p.age > 30) { p.removed = true; return; }
+    const g = p.type === 'arrow' ? 20 : 12;
+    p.vel[1] -= g * dt;
+    const drag = Math.pow(0.99, dt * 20);
+    p.vel[0] *= drag; p.vel[1] *= drag; p.vel[2] *= drag;
+    const speed = Math.hypot(...p.vel);
+    const steps = Math.max(1, Math.ceil((speed * dt) / 0.25));
+    const sdt = dt / steps;
+    for (let i = 0; i < steps && !p.removed && !p.stuck; i++) {
+      const next = [p.pos[0] + p.vel[0] * sdt, p.pos[1] + p.vel[1] * sdt, p.pos[2] + p.vel[2] * sdt];
+      // Entities first: mobs, then the player (for mob-fired arrows).
+      const dir = [p.vel[0] / speed, p.vel[1] / speed, p.vel[2] / speed];
+      const hit = this.raycast(p.pos, dir, speed * sdt + 0.3);
+      if (hit && hit.entity !== p.owner && p.age > 0.05) {
+        this.projectileHitMob(p, hit.entity);
+        return;
+      }
+      if (p.owner && p.owner.kind === 'mob') {
+        const pl = game.player;
+        const b = [pl.pos[0] - 0.3, pl.pos[1], pl.pos[2] - 0.3, pl.pos[0] + 0.3, pl.pos[1] + 1.8, pl.pos[2] + 0.3];
+        const t = rayBox(p.pos, dir, b);
+        if (t !== null && t <= speed * sdt + 0.2) {
+          game.projectileHitPlayer(p);
+          p.removed = true;
+          return;
+        }
+      }
+      const bx = Math.floor(next[0]), by = Math.floor(next[1]), bz = Math.floor(next[2]);
+      const id = this.world.getBlock(bx, by, bz);
+      if (IS_SOLID[id] || id === B.LAVA) {
+        this.projectileHitBlock(p, next);
+        return;
+      }
+      p.pos = next;
+    }
+  }
+
+  projectileHitMob(p, mob) {
+    const game = this.game;
+    if (p.type === 'arrow') {
+      mob.hurt(p.damage, [p.pos[0] - p.vel[0], p.pos[1], p.pos[2] - p.vel[2]], this, p.owner);
+      p.removed = true;
+    } else {
+      if (p.type === 'snowball') mob.hurt(mob.type === 'blaze' ? 3 : 0.01, p.pos, this, p.owner);
+      this.projectileBurst(p);
+    }
+    if (p.owner === 'player') game.sound.hit?.();
+  }
+
+  projectileHitBlock(p, next) {
+    if (p.type === 'arrow') {
+      p.stuck = true;
+      p.age = 0;
+      p.pos = [p.pos[0] + (next[0] - p.pos[0]) * 0.6, p.pos[1] + (next[1] - p.pos[1]) * 0.6, p.pos[2] + (next[2] - p.pos[2]) * 0.6];
+      this.game.sound.arrowHit?.();
+      return;
+    }
+    this.projectileBurst(p);
+  }
+
+  // Snowballs, eggs and pearls break on impact.
+  projectileBurst(p) {
+    const game = this.game;
+    p.removed = true;
+    game.particles.smoke(p.pos[0], p.pos[1], p.pos[2], 6, 0.15, 0.08, p.type === 'ender_pearl' ? 0.9 : 0.05);
+    if (p.type === 'egg' && Math.random() < 0.125) {
+      const m = this.spawn('chicken', p.pos[0], p.pos[1], p.pos[2]);
+      if (m) m.baby = 60;
+    } else if (p.type === 'ender_pearl' && p.owner === 'player') {
+      game.teleportPlayer(p.pos[0], Math.floor(p.pos[1]) + 0.01, p.pos[2]);
+    }
   }
 
   updateTNT(t, dt) {
@@ -376,7 +608,7 @@ export class EntityManager {
 
     // Hazards.
     if (feet === B.LAVA) this.burnMob(m, dt, 4);
-    if (def.burnsInDay && sky.day > 0.6 && !m.inWater && world.getSkyLight(ix, Math.floor(eyeY), iz) >= 14) {
+    if (def.burnsInDay && sky.day > 0.6 && (sky.rain || 0) < 0.3 && !m.inWater && world.getSkyLight(ix, Math.floor(eyeY), iz) >= 14) {
       m.burn = 1;
     } else m.burn = Math.max(0, m.burn - dt);
     if (m.burn > 0) this.burnMob(m, dt, 1);
@@ -388,6 +620,14 @@ export class EntityManager {
       m.vel[2] -= (dz / (dist || 1)) * push;
     }
 
+    // Shorn sheep regrow their wool by eating grass.
+    if (m.sheared && m.onGround && (m.woolTimer -= dt) <= 0) {
+      const gx = Math.floor(m.pos[0]), gy = Math.floor(m.pos[1] - 0.5), gz = Math.floor(m.pos[2]);
+      if (world.getBlock(gx, gy, gz) === B.GRASS) {
+        game.setBlockSynced(gx, gy, gz, B.DIRT);
+        m.sheared = false;
+      } else m.woolTimer = 5;
+    }
     m.soundTimer -= dt;
     if (m.soundTimer <= 0) {
       m.soundTimer = 6 + Math.random() * 12;
@@ -417,12 +657,31 @@ export class EntityManager {
         const def = MOBS[type];
         parts = def.parts.map((p) => {
           const built = buildPartMesh(p, def.skin);
-          return { kind: p.kind, mesh: renderer.createMesh(built.data, built.quads), pivot: p.pivot || [0, 0, 0] };
+          return { kind: p.kind, mesh: renderer.createMesh(built.data, built.quads), pivot: p.pivot || [0, 0, 0], fleece: !!p.fleece };
         });
       }
       this.meshes.set(type, parts);
     }
     return this.meshes.get(type);
+  }
+
+  // Mesh for an item lying on the ground or flying: a small cube for blocks
+  // that are held as blocks, an extruded sprite otherwise.
+  itemMesh(id) {
+    const key = `item:${id}`;
+    if (!this.meshes.has(key)) {
+      const renderer = this.game.renderer;
+      let entry;
+      if (isBlockItem(id) && BLOCKS[id].heldAsBlock) {
+        const b = buildBlockMesh(id);
+        entry = { mesh: renderer.createMesh(b.data, b.quads), texture: 'blocks', uvScale: 1 / 16, block: true };
+      } else {
+        const b = buildExtrudedSprite(itemSpriteName(id));
+        entry = { mesh: renderer.createMesh(b.data, b.quads), texture: b.atlas, uvScale: b.uvScale, block: false };
+      }
+      this.meshes.set(key, entry);
+    }
+    return this.meshes.get(key);
   }
 
   renderList(time) {
@@ -433,6 +692,49 @@ export class EntityManager {
         world.getSkyLight(Math.floor(e.pos[0]), Math.floor(e.pos[1] + 0.5), Math.floor(e.pos[2])),
         world.getBlockLight(Math.floor(e.pos[0]), Math.floor(e.pos[1] + 0.5), Math.floor(e.pos[2])),
       ];
+      if (e.kind === 'item') {
+        const m = this.itemMesh(e.stack.id);
+        const bob = Math.sin(e.age * 2.6 + e.id) * 0.06 + 0.14;
+        const copies = e.stack.count > 32 ? 3 : e.stack.count > 1 ? 2 : 1;
+        const parts = [];
+        for (let k = 0; k < copies; k++) {
+          const off = k * 0.07;
+          parts.push({
+            mesh: m.mesh,
+            matrix: m.block
+              ? compose(translation(off, bob + off * 0.5, -off), rotationY(e.spin), scaling(0.25), translation(-0.5, 0, -0.5))
+              : compose(translation(off, bob + off * 0.5, 0), rotationY(e.spin), scaling(0.45), translation(-0.5, 0, -0.5)),
+          });
+        }
+        out.push({ parts, pos: e.pos, light, overlay: [0, 0, 0, 0], texture: m.texture, uvScale: m.uvScale });
+        continue;
+      }
+      if (e.kind === 'xp') {
+        const m = this.itemMesh(I.SLIMEBALL);
+        const pulse = 0.18 + e.value * 0.006 + Math.sin(time * 8 + e.id) * 0.02;
+        out.push({
+          parts: [{ mesh: m.mesh, matrix: compose(translation(0, 0.1, 0), rotationY(time * 3 + e.id), scaling(pulse), translation(-0.5, 0, -0.5)) }],
+          pos: e.pos, light: [15, 15], overlay: [0.7, 1, 0.2, 0.55], texture: m.texture, uvScale: m.uvScale,
+        });
+        continue;
+      }
+      if (e.kind === 'projectile') {
+        const itemId = { arrow: I.ARROW, snowball: I.SNOWBALL, egg: I.EGG, ender_pearl: I.ENDER_PEARL }[e.type];
+        const m = this.itemMesh(itemId);
+        let matrix;
+        if (e.type === 'arrow') {
+          // Point the sprite's diagonal (bottom-left to top-right) along the flight direction.
+          const v = e.stuck ? e.lastVel || [1, 0, 0] : e.vel;
+          e.lastVel = e.stuck ? e.lastVel : [...v];
+          const yaw = Math.atan2(v[0], v[2]);
+          const pitch = Math.atan2(v[1], Math.hypot(v[0], v[2]));
+          matrix = compose(rotationY(yaw - Math.PI / 2), rotationZ(pitch), rotationZ(-Math.PI / 4), scaling(0.7), translation(-0.85, -0.15, -0.5));
+        } else {
+          matrix = compose(rotationY(time * 6), scaling(0.35), translation(-0.5, -0.5, -0.5));
+        }
+        out.push({ parts: [{ mesh: m.mesh, matrix }], pos: e.pos, light, overlay: [0, 0, 0, 0], texture: m.texture, uvScale: m.uvScale });
+        continue;
+      }
       if (e.kind === 'tnt') {
         const flash = Math.floor(e.fuse * 5) % 2 === 0 ? 0.55 : 0;
         const sc = 1 + Math.max(0, 0.6 - e.fuse) * 0.3;
@@ -448,7 +750,7 @@ export class EntityManager {
       if (e.dead) base.push(rotationZ(Math.min(1, e.deathTime / 0.5) * Math.PI / 2));
       if (e.def.explodes && e.fuse > 0) base.push(scaling(1 + e.fuse * 0.12));
       const swing = Math.sin(e.walkPhase) * 0.7 * e.walkAmount;
-      const out2 = parts.map((p) => {
+      const out2 = parts.filter((p) => !(p.fleece && e.sheared)).map((p) => {
         let rot = null;
         switch (p.kind) {
           case 'head': rot = compose(rotationY(e.headYaw), rotationX(-e.headPitch)); break;

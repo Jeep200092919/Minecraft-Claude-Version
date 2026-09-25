@@ -100,12 +100,112 @@ export const B = {
   COBBLE_SLAB: 84,
   STONE_SLAB: 85,
   DIRT_PATH: 86,
+  GRANITE: 87,
+  DIORITE: 88,
+  ANDESITE: 89,
+  POLISHED_GRANITE: 90,
+  POLISHED_DIORITE: 91,
+  POLISHED_ANDESITE: 92,
+  DEEPSLATE: 93,
+  COBBLED_DEEPSLATE: 94,
+  DEEPSLATE_IRON_ORE: 95,
+  DEEPSLATE_GOLD_ORE: 96,
+  DEEPSLATE_DIAMOND_ORE: 97,
+  DEEPSLATE_REDSTONE_ORE: 98,
+  REDSTONE_ORE: 99,
+  LAPIS_ORE: 100,
+  EMERALD_ORE: 101,
+  COPPER_ORE: 102,
+  CLAY: 103,
+  ICE: 104,
+  PACKED_ICE: 105,
+  SNOW_LAYER: 106,
+  TERRACOTTA: 107,
+  ORANGE_TERRACOTTA: 108,
+  BLUE_TERRACOTTA: 109,
+  CHISELED_SANDSTONE: 110,
+  CUT_SANDSTONE: 111,
+  SMOOTH_SANDSTONE: 112,
+  SUGAR_CANE: 113,
+  PUMPKIN: 114,
+  JACK_O_LANTERN_PX: 115,
+  JACK_O_LANTERN_NX: 116,
+  JACK_O_LANTERN_PZ: 117,
+  JACK_O_LANTERN_NZ: 118,
+  MELON: 119,
+  CARROTS_0: 120,
+  CARROTS_1: 121,
+  CARROTS_2: 122,
+  CARROTS_3: 123,
+  POTATOES_0: 124,
+  POTATOES_1: 125,
+  POTATOES_2: 126,
+  POTATOES_3: 127,
+  RED_MUSHROOM: 128,
+  BROWN_MUSHROOM: 129,
+  ALLIUM: 130,
+  AZURE_BLUET: 131,
+  RED_TULIP: 132,
+  ORANGE_TULIP: 133,
+  LILY_OF_THE_VALLEY: 134,
+  FERN: 135,
+  LILY_PAD: 136,
+  OAK_SAPLING: 137,
+  BIRCH_SAPLING: 138,
+  SPRUCE_SAPLING: 139,
+  ORANGE_WOOL: 140,
+  MAGENTA_WOOL: 141,
+  LIGHT_BLUE_WOOL: 142,
+  LIME_WOOL: 143,
+  PINK_WOOL: 144,
+  GRAY_WOOL: 145,
+  LIGHT_GRAY_WOOL: 146,
+  CYAN_WOOL: 147,
+  PURPLE_WOOL: 148,
+  BROWN_WOOL: 149,
+  GLASS_PANE: 150,
+  IRON_BARS: 151,
+  BIRCH_PLANKS: 152,
+  SPRUCE_PLANKS: 153,
+  MOSSY_STONE_BRICKS: 154,
+  CRACKED_STONE_BRICKS: 155,
+  CHISELED_STONE_BRICKS: 156,
+  SMOOTH_STONE: 157,
+  HAY_BALE: 158,
+  PRISMARINE: 159,
+  PRISMARINE_BRICKS: 160,
+  DARK_PRISMARINE: 161,
+  SEA_LANTERN: 162,
+  NETHERRACK: 163,
+  SOUL_SAND: 164,
+  NETHER_BRICKS: 165,
+  NETHER_QUARTZ_ORE: 166,
+  MAGMA_BLOCK: 167,
+  NETHER_PORTAL_X: 168, // the portal plane runs along X
+  NETHER_PORTAL_Z: 169,
+  CRYING_OBSIDIAN: 170,
+  COBWEB: 171,
+  SPAWNER: 172,
+  RAIL_NS: 173,
+  RAIL_EW: 174,
+  LADDER_PX: 175, // attached to the block at -X
+  LADDER_NX: 176,
+  LADDER_PZ: 177,
+  LADDER_NZ: 178,
+  OAK_DOOR: 179, // 179..194: + upper * 8 + open * 4 + facing
+  BED: 195, // 195..202: + head * 4 + facing
+  EMERALD_BLOCK: 203,
+  LAPIS_BLOCK: 204,
+  REDSTONE_BLOCK: 205,
+  QUARTZ_BLOCK: 206,
 };
 // Inventory items for orientable blocks.
 B.FURNACE = B.FURNACE_PZ;
 B.CHEST = B.CHEST_PZ;
 B.OAK_STAIRS = B.OAK_STAIRS_PZ;
 B.COBBLE_STAIRS = B.COBBLE_STAIRS_PZ;
+B.JACK_O_LANTERN = B.JACK_O_LANTERN_PZ;
+B.LADDER = B.LADDER_PZ;
 
 export const I = {
   STICK: 256,
@@ -158,7 +258,61 @@ export const I = {
   ZOMBIE_SPAWN_EGG: 303,
   CREEPER_SPAWN_EGG: 304,
   VILLAGER_SPAWN_EGG: 305,
+  BOW: 306,
+  ARROW: 307,
+  BUCKET: 308,
+  WATER_BUCKET: 309,
+  LAVA_BUCKET: 310,
+  MILK_BUCKET: 311,
+  BONE: 312,
+  BONE_MEAL: 313,
+  STRING: 314,
+  SPIDER_EYE: 315,
+  ENDER_PEARL: 316,
+  SLIMEBALL: 317,
+  EGG: 318,
+  SNOWBALL: 319,
+  CARROT: 320,
+  POTATO: 321,
+  BAKED_POTATO: 322,
+  GOLDEN_APPLE: 323,
+  COOKIE: 324,
+  SUGAR: 325,
+  PAPER: 326,
+  BOOK: 327,
+  COMPASS: 328,
+  CLOCK: 329,
+  EMERALD: 330,
+  LAPIS_LAZULI: 331,
+  REDSTONE: 332,
+  IRON_NUGGET: 333,
+  GOLD_NUGGET: 334,
+  SHEARS: 335,
+  BOWL: 336,
+  MUSHROOM_STEW: 337,
+  PUMPKIN_PIE: 338,
+  MELON_SLICE: 339,
+  CHARCOAL: 340,
+  CLAY_BALL: 341,
+  BRICK: 342,
+  COPPER_INGOT: 343,
+  QUARTZ: 344,
+  BLAZE_ROD: 345,
+  OAK_DOOR: 346,
+  RED_BED: 347,
+  // Armour: 350 + material * 4 + piece (helmet, chestplate, leggings, boots).
+  LEATHER_HELMET: 350,
+  GOLDEN_PICKAXE: 366,
+  GOLDEN_AXE: 367,
+  GOLDEN_SHOVEL: 368,
+  GOLDEN_SWORD: 369,
+  GOLDEN_HOE: 370,
 };
+export const ARMOR_MATERIALS = ['leather', 'iron', 'golden', 'diamond'];
+export const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
+ARMOR_MATERIALS.forEach((m, mi) => ARMOR_PIECES.forEach((p, pi) => {
+  I[`${m.toUpperCase()}_${p.toUpperCase()}`] = 350 + mi * 4 + pi;
+}));
 
 const DEFAULT_BLOCK = {
   shape: 'cube', // cube | cross | torch | liquid | cactus | lantern | fence | stairs | slab | box | crop | chest | none
@@ -233,10 +387,10 @@ def(B.LAVA, 'lava', 'Lava', 'lava', {
   shape: 'liquid', solid: false, opaque: false, liquid: true, hardness: -1, lightEmit: 15,
   replaceable: true, targetable: false, creative: false, emissive: true,
 });
-def(B.COAL_ORE, 'coal_ore', 'Coal Ore', 'coal_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 1, drop: I.COAL });
+def(B.COAL_ORE, 'coal_ore', 'Coal Ore', 'coal_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 1, drop: I.COAL, xp: [0, 2] });
 def(B.IRON_ORE, 'iron_ore', 'Iron Ore', 'iron_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 2 });
 def(B.GOLD_ORE, 'gold_ore', 'Gold Ore', 'gold_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 3 });
-def(B.DIAMOND_ORE, 'diamond_ore', 'Diamond Ore', 'diamond_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 3, drop: I.DIAMOND });
+def(B.DIAMOND_ORE, 'diamond_ore', 'Diamond Ore', 'diamond_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 3, drop: I.DIAMOND, xp: [3, 7] });
 def(B.SNOW, 'snow', 'Snow Block', 'snow', { hardness: 0.2, tool: 'shovel', sound: 'snow' });
 def(B.SNOWY_GRASS, 'snowy_grass', 'Snowy Grass Block', { top: 'snow', bottom: 'dirt', side: 'snowy_grass_side' }, { hardness: 0.6, tool: 'shovel', drop: B.DIRT, sound: 'snow' });
 def(B.CACTUS, 'cactus', 'Cactus', { top: 'cactus_top', bottom: 'cactus_bottom', side: 'cactus_side' }, {
@@ -340,6 +494,163 @@ def(B.DIRT_PATH, 'dirt_path', 'Dirt Path', { top: 'dirt_path_top', side: 'dirt_p
   selectionBox: [0, 0, 0, 1, 15 / 16, 1], collision: [[0, 0, 0, 1, 15 / 16, 1]],
 });
 
+// --- Stone variants, ores and natural blocks ---------------------------------------
+
+const stoneLike = { hardness: 1.5, tool: 'pickaxe', harvestTier: 1 };
+def(B.GRANITE, 'granite', 'Granite', 'granite', stoneLike);
+def(B.DIORITE, 'diorite', 'Diorite', 'diorite', stoneLike);
+def(B.ANDESITE, 'andesite', 'Andesite', 'andesite', stoneLike);
+def(B.POLISHED_GRANITE, 'polished_granite', 'Polished Granite', 'polished_granite', stoneLike);
+def(B.POLISHED_DIORITE, 'polished_diorite', 'Polished Diorite', 'polished_diorite', stoneLike);
+def(B.POLISHED_ANDESITE, 'polished_andesite', 'Polished Andesite', 'polished_andesite', stoneLike);
+def(B.DEEPSLATE, 'deepslate', 'Deepslate', { top: 'deepslate_top', side: 'deepslate' }, { hardness: 3, tool: 'pickaxe', harvestTier: 1, drop: B.COBBLED_DEEPSLATE });
+def(B.COBBLED_DEEPSLATE, 'cobbled_deepslate', 'Cobbled Deepslate', 'cobbled_deepslate', { hardness: 3.5, tool: 'pickaxe', harvestTier: 1 });
+const ore = (harvestTier, extra = {}) => ({ hardness: 3, tool: 'pickaxe', harvestTier, ...extra });
+def(B.DEEPSLATE_IRON_ORE, 'deepslate_iron_ore', 'Deepslate Iron Ore', 'deepslate_iron_ore', ore(2, { hardness: 4.5, drop: B.IRON_ORE }));
+def(B.DEEPSLATE_GOLD_ORE, 'deepslate_gold_ore', 'Deepslate Gold Ore', 'deepslate_gold_ore', ore(3, { hardness: 4.5, drop: B.GOLD_ORE }));
+def(B.DEEPSLATE_DIAMOND_ORE, 'deepslate_diamond_ore', 'Deepslate Diamond Ore', 'deepslate_diamond_ore', ore(3, { hardness: 4.5, drop: I.DIAMOND, xp: [3, 7] }));
+def(B.DEEPSLATE_REDSTONE_ORE, 'deepslate_redstone_ore', 'Deepslate Redstone Ore', 'deepslate_redstone_ore', ore(3, { hardness: 4.5, drops: [[I.REDSTONE, 4, 5]], xp: [1, 5] }));
+def(B.REDSTONE_ORE, 'redstone_ore', 'Redstone Ore', 'redstone_ore', ore(3, { drops: [[I.REDSTONE, 4, 5]], xp: [1, 5] }));
+def(B.LAPIS_ORE, 'lapis_ore', 'Lapis Lazuli Ore', 'lapis_ore', ore(2, { drops: [[I.LAPIS_LAZULI, 4, 8]], xp: [2, 5] }));
+def(B.EMERALD_ORE, 'emerald_ore', 'Emerald Ore', 'emerald_ore', ore(3, { drop: I.EMERALD, xp: [3, 7] }));
+def(B.COPPER_ORE, 'copper_ore', 'Copper Ore', 'copper_ore', ore(2));
+def(B.CLAY, 'clay', 'Clay', 'clay', { hardness: 0.6, tool: 'shovel', sound: 'gravel', drops: [[I.CLAY_BALL, 4]] });
+def(B.ICE, 'ice', 'Ice', 'ice', { opaque: false, cullSame: true, hardness: 0.5, tool: 'pickaxe', sound: 'glass', drop: null, lightOpacity: 1, slippery: true });
+def(B.PACKED_ICE, 'packed_ice', 'Packed Ice', 'packed_ice', { hardness: 0.5, tool: 'pickaxe', sound: 'glass', drop: null, slippery: true });
+def(B.SNOW_LAYER, 'snow_layer', 'Snow', { top: 'snow', side: 'snow' }, {
+  shape: 'box', box: [0, 0, 0, 16, 2, 16], solid: false, opaque: false, hardness: 0.1, tool: 'shovel', sound: 'snow',
+  replaceable: true, support: 'ground', drops: [[I.SNOWBALL, 1]], selectionBox: [0, 0, 0, 1, 2 / 16, 1],
+});
+def(B.TERRACOTTA, 'terracotta', 'Terracotta', 'terracotta', { hardness: 1.25, tool: 'pickaxe', harvestTier: 1 });
+def(B.ORANGE_TERRACOTTA, 'orange_terracotta', 'Orange Terracotta', 'orange_terracotta', { hardness: 1.25, tool: 'pickaxe', harvestTier: 1 });
+def(B.BLUE_TERRACOTTA, 'blue_terracotta', 'Blue Terracotta', 'blue_terracotta', { hardness: 1.25, tool: 'pickaxe', harvestTier: 1 });
+const sandstone = { hardness: 0.8, tool: 'pickaxe', harvestTier: 1 };
+def(B.CHISELED_SANDSTONE, 'chiseled_sandstone', 'Chiseled Sandstone', { top: 'sandstone_top', side: 'chiseled_sandstone' }, sandstone);
+def(B.CUT_SANDSTONE, 'cut_sandstone', 'Cut Sandstone', { top: 'sandstone_top', side: 'cut_sandstone' }, sandstone);
+def(B.SMOOTH_SANDSTONE, 'smooth_sandstone', 'Smooth Sandstone', 'sandstone_top', sandstone);
+def(B.SUGAR_CANE, 'sugar_cane', 'Sugar Cane', 'sugar_cane', { ...plant, support: 'sugar_cane', itemTexture: 'sugar_cane_item', selectionBox: [0.125, 0, 0.125, 0.875, 1, 0.875] });
+def(B.PUMPKIN, 'pumpkin', 'Pumpkin', { top: 'pumpkin_top', side: 'pumpkin_side' }, { hardness: 1, tool: 'axe', sound: 'wood' });
+orientable([B.JACK_O_LANTERN_PX, B.JACK_O_LANTERN_NX, B.JACK_O_LANTERN_PZ, B.JACK_O_LANTERN_NZ], 'jack_o_lantern', "Jack o'Lantern", 'jack_o_lantern',
+  { top: 'pumpkin_top', side: 'pumpkin_side' }, { hardness: 1, tool: 'axe', sound: 'wood', lightEmit: 15, emissive: true });
+def(B.MELON, 'melon', 'Melon', { top: 'melon_top', side: 'melon_side' }, { hardness: 1, tool: 'axe', sound: 'wood', drops: [[I.MELON_SLICE, 3, 7]] });
+const cropDrops = (item, stage) => (stage < 3 ? [[item, 1]] : [[item, 2, 5]]);
+[[B.CARROTS_0, 'carrots', 'Carrots', I.CARROT], [B.POTATOES_0, 'potatoes', 'Potatoes', I.POTATO]].forEach(([first, name, label, crop]) => {
+  for (let stage = 0; stage < 4; stage++) {
+    def(first + stage, `${name}_${stage}`, label, `${name}_${stage}`, {
+      shape: 'crop', solid: false, opaque: false, hardness: 0, sound: 'grass', support: 'farmland', creative: false,
+      drops: cropDrops(crop, stage), crop: stage, selectionBox: [0, 0, 0, 1, (2 + stage * 3) / 16, 1],
+    });
+  }
+});
+def(B.RED_MUSHROOM, 'red_mushroom', 'Red Mushroom', 'red_mushroom', { ...plant, support: 'mushroom', lightEmit: 0, selectionBox: [0.3, 0, 0.3, 0.7, 0.4, 0.7] });
+def(B.BROWN_MUSHROOM, 'brown_mushroom', 'Brown Mushroom', 'brown_mushroom', { ...plant, support: 'mushroom', lightEmit: 1, selectionBox: [0.3, 0, 0.3, 0.7, 0.4, 0.7] });
+def(B.ALLIUM, 'allium', 'Allium', 'allium', plant);
+def(B.AZURE_BLUET, 'azure_bluet', 'Azure Bluet', 'azure_bluet', plant);
+def(B.RED_TULIP, 'red_tulip', 'Red Tulip', 'red_tulip', plant);
+def(B.ORANGE_TULIP, 'orange_tulip', 'Orange Tulip', 'orange_tulip', plant);
+def(B.LILY_OF_THE_VALLEY, 'lily_of_the_valley', 'Lily of the Valley', 'lily_of_the_valley', plant);
+def(B.FERN, 'fern', 'Fern', 'fern', { ...plant, replaceable: true, drop: I.WHEAT_SEEDS, dropChance: 0.125, sway: true });
+def(B.LILY_PAD, 'lily_pad', 'Lily Pad', 'lily_pad', {
+  shape: 'box', box: [0, 0, 0, 16, 1, 16], solid: false, opaque: false, hardness: 0, sound: 'grass', support: 'water',
+  selectionBox: [0, 0, 0, 1, 1 / 16, 1], topOnly: true, tint: 'foliage',
+});
+const sapling = { ...plant, support: 'ground', sapling: true };
+def(B.OAK_SAPLING, 'oak_sapling', 'Oak Sapling', 'oak_sapling', { ...sapling, tree: 'oak' });
+def(B.BIRCH_SAPLING, 'birch_sapling', 'Birch Sapling', 'birch_sapling', { ...sapling, tree: 'birch' });
+def(B.SPRUCE_SAPLING, 'spruce_sapling', 'Spruce Sapling', 'spruce_sapling', { ...sapling, tree: 'spruce' });
+BLOCKS[B.LEAVES].altDrops = [[B.OAK_SAPLING, 0.05], [I.APPLE, 0.03]];
+BLOCKS[B.BIRCH_LEAVES].altDrops = [[B.BIRCH_SAPLING, 0.05]];
+BLOCKS[B.SPRUCE_LEAVES].altDrops = [[B.SPRUCE_SAPLING, 0.05]];
+export const WOOL_COLORS = {
+  white: [232, 234, 234], orange: [240, 118, 20], magenta: [190, 68, 180], light_blue: [58, 176, 218],
+  yellow: [246, 196, 40], lime: [112, 186, 26], pink: [238, 142, 170], gray: [62, 68, 72],
+  light_gray: [142, 142, 136], cyan: [22, 138, 146], purple: [122, 42, 172], blue: [54, 60, 160],
+  brown: [114, 72, 40], green: [86, 112, 30], red: [162, 40, 36], black: [28, 24, 26],
+};
+for (const color of ['orange', 'magenta', 'light_blue', 'lime', 'pink', 'gray', 'light_gray', 'cyan', 'purple', 'brown']) {
+  const label = color.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  def(B[`${color.toUpperCase()}_WOOL`], `${color}_wool`, `${label} Wool`, `${color}_wool`, wool);
+}
+const pane = {
+  shape: 'pane', opaque: false, hardness: 0.3, selectionBox: [0, 0, 0, 1, 1, 1],
+  collision: [[7 / 16, 0, 0, 9 / 16, 1, 1], [0, 0, 7 / 16, 1, 1, 9 / 16]],
+};
+def(B.GLASS_PANE, 'glass_pane', 'Glass Pane', 'glass', { ...pane, sound: 'glass', drop: null, itemTexture: 'glass' });
+def(B.IRON_BARS, 'iron_bars', 'Iron Bars', 'iron_bars', { ...pane, hardness: 5, tool: 'pickaxe', itemTexture: 'iron_bars' });
+def(B.BIRCH_PLANKS, 'birch_planks', 'Birch Planks', 'birch_planks', { hardness: 2, tool: 'axe', sound: 'wood' });
+def(B.SPRUCE_PLANKS, 'spruce_planks', 'Spruce Planks', 'spruce_planks', { hardness: 2, tool: 'axe', sound: 'wood' });
+def(B.MOSSY_STONE_BRICKS, 'mossy_stone_bricks', 'Mossy Stone Bricks', 'mossy_stone_bricks', stoneLike);
+def(B.CRACKED_STONE_BRICKS, 'cracked_stone_bricks', 'Cracked Stone Bricks', 'cracked_stone_bricks', stoneLike);
+def(B.CHISELED_STONE_BRICKS, 'chiseled_stone_bricks', 'Chiseled Stone Bricks', 'chiseled_stone_bricks', stoneLike);
+def(B.SMOOTH_STONE, 'smooth_stone', 'Smooth Stone', 'smooth_stone', { hardness: 2, tool: 'pickaxe', harvestTier: 1 });
+def(B.HAY_BALE, 'hay_bale', 'Hay Bale', { top: 'hay_top', side: 'hay_side' }, { hardness: 0.5, sound: 'grass' });
+def(B.PRISMARINE, 'prismarine', 'Prismarine', 'prismarine', stoneLike);
+def(B.PRISMARINE_BRICKS, 'prismarine_bricks', 'Prismarine Bricks', 'prismarine_bricks', stoneLike);
+def(B.DARK_PRISMARINE, 'dark_prismarine', 'Dark Prismarine', 'dark_prismarine', stoneLike);
+def(B.SEA_LANTERN, 'sea_lantern', 'Sea Lantern', 'sea_lantern', { hardness: 0.3, sound: 'glass', lightEmit: 15, emissive: true });
+def(B.NETHERRACK, 'netherrack', 'Netherrack', 'netherrack', { hardness: 0.4, tool: 'pickaxe', harvestTier: 1 });
+def(B.SOUL_SAND, 'soul_sand', 'Soul Sand', 'soul_sand', { hardness: 0.5, tool: 'shovel', sound: 'sand', collision: [[0, 0, 0, 1, 14 / 16, 1]], slow: true });
+def(B.NETHER_BRICKS, 'nether_bricks', 'Nether Bricks', 'nether_bricks', { hardness: 2, tool: 'pickaxe', harvestTier: 1 });
+def(B.NETHER_QUARTZ_ORE, 'nether_quartz_ore', 'Nether Quartz Ore', 'nether_quartz_ore', ore(1, { drop: I.QUARTZ, xp: [2, 5] }));
+def(B.MAGMA_BLOCK, 'magma_block', 'Magma Block', 'magma', { hardness: 0.5, tool: 'pickaxe', harvestTier: 1, lightEmit: 3, emissive: true, hot: true });
+const portal = {
+  shape: 'portal', solid: false, opaque: false, translucentCutout: true, hardness: -1, lightEmit: 11, emissive: true,
+  targetable: false, creative: false, drop: null, portal: true,
+};
+def(B.NETHER_PORTAL_X, 'nether_portal_x', 'Nether Portal', 'nether_portal', { ...portal, axis: 0 });
+def(B.NETHER_PORTAL_Z, 'nether_portal_z', 'Nether Portal', 'nether_portal', { ...portal, axis: 2 });
+def(B.CRYING_OBSIDIAN, 'crying_obsidian', 'Crying Obsidian', 'crying_obsidian', { hardness: 50, tool: 'pickaxe', harvestTier: 4, lightEmit: 10, emissive: true });
+def(B.COBWEB, 'cobweb', 'Cobweb', 'cobweb', { ...plant, support: null, hardness: 4, tool: 'sword', drops: [[I.STRING, 1]], web: true, sound: 'wool' });
+def(B.SPAWNER, 'spawner', 'Monster Spawner', 'spawner', { opaque: false, hardness: 5, tool: 'pickaxe', harvestTier: 1, drop: null, creative: false, xp: [15, 43] });
+const rail = {
+  shape: 'box', box: [0, 0, 0, 16, 1, 16], solid: false, opaque: false, hardness: 0.7, tool: 'pickaxe', sound: 'stone',
+  support: 'ground', topOnly: true, selectionBox: [0, 0, 0, 1, 2 / 16, 1], drop: B.RAIL_NS,
+};
+def(B.RAIL_NS, 'rail', 'Rail', 'rail', { ...rail });
+def(B.RAIL_EW, 'rail_ew', 'Rail', 'rail', { ...rail, creative: false, rotateTop: 1 });
+const LADDER_BOXES = [[0, 0, 0, 1, 16, 16], [15, 0, 0, 16, 16, 16], [0, 0, 0, 16, 16, 1], [0, 0, 15, 16, 16, 16]];
+[B.LADDER_PX, B.LADDER_NX, B.LADDER_PZ, B.LADDER_NZ].forEach((id, f) => {
+  const box = LADDER_BOXES[f];
+  def(id, `ladder_${FACINGS[f]}`, 'Ladder', 'ladder', {
+    shape: 'box', box, solid: false, opaque: false, hardness: 0.4, tool: 'axe', sound: 'wood', ladder: true,
+    support: 'wall', attach: [[-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]][f], facing: f, baseId: B.LADDER_PZ,
+    creative: f === 2, itemTexture: 'ladder', selectionBox: box.map((v) => v / 16), drop: B.LADDER_PZ,
+  });
+});
+// Doors: the panel lies along one side of the cell; opening swings it to the
+// neighbouring side. Facing is the direction the player looked when placing.
+const DOOR_SIDE_BOX = [[13, 0, 0, 16, 16, 16], [0, 0, 0, 3, 16, 16], [0, 0, 13, 16, 16, 16], [0, 0, 0, 16, 16, 3]];
+const DOOR_CLOSED_SIDE = [1, 0, 3, 2]; // flush with the edge nearest the player
+const DOOR_OPEN_SIDE = [2, 3, 0, 1];
+for (let upper = 0; upper < 2; upper++) {
+  for (let open = 0; open < 2; open++) {
+    for (let f = 0; f < 4; f++) {
+      const id = B.OAK_DOOR + upper * 8 + open * 4 + f;
+      const box = DOOR_SIDE_BOX[(open ? DOOR_OPEN_SIDE : DOOR_CLOSED_SIDE)[f]];
+      def(id, `oak_door_${upper ? 'upper' : 'lower'}_${open ? 'open' : 'closed'}_${FACINGS[f]}`, 'Oak Door', upper ? 'oak_door_top' : 'oak_door_bottom', {
+        shape: 'box', box, opaque: false, hardness: 3, tool: 'axe', sound: 'wood', door: { upper, open, facing: f },
+        collision: [box.map((v) => v / 16)], selectionBox: box.map((v) => v / 16), creative: false,
+        drop: upper ? null : I.OAK_DOOR, support: upper ? 'door_upper' : 'ground',
+      });
+    }
+  }
+}
+// Beds: foot and head halves; the head lies in the facing direction.
+for (let head = 0; head < 2; head++) {
+  for (let f = 0; f < 4; f++) {
+    const id = B.BED + head * 4 + f;
+    def(id, `bed_${head ? 'head' : 'foot'}_${FACINGS[f]}`, 'Red Bed', { top: head ? 'bed_head_top' : 'bed_foot_top', bottom: 'planks', side: 'bed_side' }, {
+      shape: 'box', box: [0, 0, 0, 16, 9, 16], opaque: false, hardness: 0.2, sound: 'wool', bed: { head, facing: f },
+      collision: [[0, 0, 0, 1, 9 / 16, 1]], selectionBox: [0, 0, 0, 1, 9 / 16, 1], creative: false,
+      drop: head ? null : I.RED_BED, rotateTop: [1, 3, 0, 2][f],
+    });
+  }
+}
+def(B.EMERALD_BLOCK, 'emerald_block', 'Block of Emerald', 'emerald_block', { ...metal, harvestTier: 3 });
+def(B.LAPIS_BLOCK, 'lapis_block', 'Block of Lapis Lazuli', 'lapis_block', { ...metal, harvestTier: 2 });
+def(B.REDSTONE_BLOCK, 'redstone_block', 'Block of Redstone', 'redstone_block', { ...metal, lightEmit: 0 });
+def(B.QUARTZ_BLOCK, 'quartz_block', 'Block of Quartz', { top: 'quartz_top', side: 'quartz_side' }, { hardness: 0.8, tool: 'pickaxe', harvestTier: 1 });
+
 // Fill any unused ids with inert air-like entries so lookups never fail.
 for (let i = 0; i < 256; i++) {
   if (!BLOCKS[i]) BLOCKS[i] = { ...BLOCKS[B.AIR], id: i, name: `unused_${i}` };
@@ -378,10 +689,11 @@ export function orientedBlock(baseId, f) {
 // Items
 
 const TOOL_TIERS = [
-  { key: 'wooden', name: 'Wooden', tier: 1, speed: 2, material: B.PLANKS, bonus: 0 },
-  { key: 'stone', name: 'Stone', tier: 2, speed: 4, material: B.COBBLESTONE, bonus: 1 },
-  { key: 'iron', name: 'Iron', tier: 3, speed: 6, material: I.IRON_INGOT, bonus: 2 },
-  { key: 'diamond', name: 'Diamond', tier: 4, speed: 8, material: I.DIAMOND, bonus: 3 },
+  { key: 'wooden', name: 'Wooden', tier: 1, speed: 2, material: B.PLANKS, bonus: 0, uses: 59 },
+  { key: 'stone', name: 'Stone', tier: 2, speed: 4, material: B.COBBLESTONE, bonus: 1, uses: 131 },
+  { key: 'iron', name: 'Iron', tier: 3, speed: 6, material: I.IRON_INGOT, bonus: 2, uses: 250 },
+  { key: 'golden', name: 'Golden', tier: 1, speed: 12, material: I.GOLD_INGOT, bonus: 0, uses: 32 },
+  { key: 'diamond', name: 'Diamond', tier: 4, speed: 8, material: I.DIAMOND, bonus: 3, uses: 1561 },
 ];
 const BASE_DAMAGE = { sword: 5, axe: 4, pickaxe: 3, shovel: 2, hoe: 1 };
 
@@ -409,11 +721,14 @@ for (const tier of TOOL_TIERS) {
     item(id, `${tier.key}_${type}`, `${tier.name} ${label}`, {
       maxStack: 1,
       damage: BASE_DAMAGE[type] + tier.bonus,
+      durability: tier.uses,
       tool: { type, tier: tier.tier, speed: tier.speed, tierKey: tier.key },
     });
   }
 }
-const food = (hunger, saturation) => ({ food: { hunger, saturation } });
+function food(hunger, saturation) {
+  return { food: { hunger, saturation } };
+}
 item(I.WHEAT_SEEDS, 'wheat_seeds', 'Wheat Seeds', { plants: B.WHEAT_0 });
 item(I.WHEAT, 'wheat', 'Wheat');
 item(I.BREAD, 'bread', 'Bread', food(5, 6));
@@ -431,11 +746,67 @@ item(I.LEATHER, 'leather', 'Leather');
 item(I.FEATHER, 'feather', 'Feather');
 item(I.GUNPOWDER, 'gunpowder', 'Gunpowder');
 item(I.FLINT, 'flint', 'Flint');
-item(I.FLINT_AND_STEEL, 'flint_and_steel', 'Flint and Steel', { maxStack: 1 });
+item(I.FLINT_AND_STEEL, 'flint_and_steel', 'Flint and Steel', { maxStack: 1, durability: 64 });
 for (const mob of ['pig', 'cow', 'sheep', 'chicken', 'zombie', 'creeper', 'villager']) {
   const label = mob[0].toUpperCase() + mob.slice(1);
   item(I[`${mob.toUpperCase()}_SPAWN_EGG`], `${mob}_spawn_egg`, `${label} Spawn Egg`, { spawns: mob });
 }
+item(I.BOW, 'bow', 'Bow', { maxStack: 1, durability: 384, bow: true });
+item(I.ARROW, 'arrow', 'Arrow');
+item(I.BUCKET, 'bucket', 'Bucket', { maxStack: 16, bucket: 'empty' });
+item(I.WATER_BUCKET, 'water_bucket', 'Water Bucket', { maxStack: 1, bucket: B.WATER });
+item(I.LAVA_BUCKET, 'lava_bucket', 'Lava Bucket', { maxStack: 1, bucket: B.LAVA });
+item(I.MILK_BUCKET, 'milk_bucket', 'Milk Bucket', { maxStack: 1, food: { hunger: 0, saturation: 0, always: true }, leaves: I.BUCKET });
+item(I.BONE, 'bone', 'Bone');
+item(I.BONE_MEAL, 'bone_meal', 'Bone Meal', { fertilizer: true });
+item(I.STRING, 'string', 'String');
+item(I.SPIDER_EYE, 'spider_eye', 'Spider Eye', food(2, 3.2));
+item(I.ENDER_PEARL, 'ender_pearl', 'Ender Pearl', { maxStack: 16, throwable: 'ender_pearl' });
+item(I.SLIMEBALL, 'slimeball', 'Slimeball');
+item(I.EGG, 'egg', 'Egg', { maxStack: 16, throwable: 'egg' });
+item(I.SNOWBALL, 'snowball', 'Snowball', { maxStack: 16, throwable: 'snowball' });
+item(I.CARROT, 'carrot', 'Carrot', { ...food(3, 3.6), plants: B.CARROTS_0 });
+item(I.POTATO, 'potato', 'Potato', { ...food(1, 0.6), plants: B.POTATOES_0 });
+item(I.BAKED_POTATO, 'baked_potato', 'Baked Potato', food(5, 6));
+item(I.GOLDEN_APPLE, 'golden_apple', 'Golden Apple', { food: { hunger: 4, saturation: 9.6, always: true, regen: 5, absorb: 4 } });
+item(I.COOKIE, 'cookie', 'Cookie', food(2, 0.4));
+item(I.SUGAR, 'sugar', 'Sugar');
+item(I.PAPER, 'paper', 'Paper');
+item(I.BOOK, 'book', 'Book');
+item(I.COMPASS, 'compass', 'Compass', { maxStack: 1 });
+item(I.CLOCK, 'clock', 'Clock', { maxStack: 1 });
+item(I.EMERALD, 'emerald', 'Emerald');
+item(I.LAPIS_LAZULI, 'lapis_lazuli', 'Lapis Lazuli');
+item(I.REDSTONE, 'redstone', 'Redstone Dust');
+item(I.IRON_NUGGET, 'iron_nugget', 'Iron Nugget');
+item(I.GOLD_NUGGET, 'gold_nugget', 'Gold Nugget');
+item(I.SHEARS, 'shears', 'Shears', { maxStack: 1, durability: 238, tool: { type: 'shears', tier: 1, speed: 2, tierKey: 'iron' } });
+item(I.BOWL, 'bowl', 'Bowl');
+item(I.MUSHROOM_STEW, 'mushroom_stew', 'Mushroom Stew', { maxStack: 1, ...food(6, 7.2), leaves: I.BOWL });
+item(I.PUMPKIN_PIE, 'pumpkin_pie', 'Pumpkin Pie', food(8, 4.8));
+item(I.MELON_SLICE, 'melon_slice', 'Melon Slice', food(2, 1.2));
+item(I.CHARCOAL, 'charcoal', 'Charcoal');
+item(I.CLAY_BALL, 'clay_ball', 'Clay Ball');
+item(I.BRICK, 'brick', 'Brick');
+item(I.COPPER_INGOT, 'copper_ingot', 'Copper Ingot');
+item(I.QUARTZ, 'quartz', 'Nether Quartz');
+item(I.BLAZE_ROD, 'blaze_rod', 'Blaze Rod');
+item(I.OAK_DOOR, 'oak_door', 'Oak Door', { places: 'door' });
+item(I.RED_BED, 'red_bed', 'Red Bed', { maxStack: 1, places: 'bed' });
+// Armour: defence points per piece and durability, like the original game.
+export const ARMOR = {
+  leather: { name: 'Leather', points: [1, 3, 2, 1], uses: [55, 80, 75, 65], label: ['Cap', 'Tunic', 'Pants', 'Boots'] },
+  iron: { name: 'Iron', points: [2, 6, 5, 2], uses: [165, 240, 225, 195] },
+  golden: { name: 'Golden', points: [2, 5, 3, 1], uses: [77, 112, 105, 91] },
+  diamond: { name: 'Diamond', points: [3, 8, 6, 3], uses: [363, 528, 495, 429] },
+};
+const PIECE_LABEL = ['Helmet', 'Chestplate', 'Leggings', 'Boots'];
+ARMOR_MATERIALS.forEach((m, mi) => ARMOR_PIECES.forEach((piece, pi) => {
+  const a = ARMOR[m];
+  item(350 + mi * 4 + pi, `${m}_${piece}`, `${a.name} ${a.label ? a.label[pi] : PIECE_LABEL[pi]}`, {
+    maxStack: 1, durability: a.uses[pi], armor: { slot: pi, points: a.points[pi], material: m },
+  });
+}));
 
 export function getItem(id) {
   return ITEMS.get(id);
@@ -455,6 +826,8 @@ export function breakTime(blockId, heldItemId) {
   const canHarvest = block.harvestTier === 0 || (rightTool && tool.tier >= block.harvestTier);
   let speed = rightTool ? tool.speed : 1;
   if (tool && tool.type === 'sword' && block.waving) speed = 1.5;
+  if (tool && tool.type === 'sword' && block.web) speed = 15;
+  if (tool && tool.type === 'shears' && (block.waving || block.web || block.name.endsWith('_wool'))) speed = block.web ? 15 : 5;
   return (block.hardness * (canHarvest ? 1.5 : 5)) / speed;
 }
 
@@ -462,6 +835,9 @@ export function breakTime(blockId, heldItemId) {
 export function blockDrops(blockId, heldItemId, random = Math.random) {
   const block = BLOCKS[blockId];
   const tool = heldItemId ? ITEMS.get(heldItemId)?.tool : null;
+  // Shears collect leaves, grass, ferns and cobwebs themselves.
+  if (tool?.type === 'shears' && (block.waving || blockId === B.TALL_GRASS || blockId === B.FERN || blockId === B.COBWEB)) return [[blockId, 1]];
+  if (block.web && tool?.type !== 'sword') return [];
   if (block.harvestTier > 0) {
     if (!tool || tool.type !== block.tool || tool.tier < block.harvestTier) return [];
   }
@@ -471,6 +847,11 @@ export function blockDrops(blockId, heldItemId, random = Math.random) {
       .filter(([, n]) => n > 0);
   }
   if (block.altDrop && random() < block.altDrop[1]) return [[block.altDrop[0], 1]];
+  if (block.altDrops) {
+    const out = [];
+    for (const [id, chance] of block.altDrops) if (random() < chance) out.push([id, 1]);
+    if (out.length) return out;
+  }
   const drop = block.drop === undefined ? (block.baseId ?? blockId) : block.drop;
   if (drop === null) return [];
   if (block.dropChance < 1 && random() >= block.dropChance) return [];
@@ -488,15 +869,33 @@ export const CREATIVE_ITEMS = [...ITEMS.values()].filter((it) => it.creative).ma
 // ---------------------------------------------------------------------------
 // Furnace: smelting results and fuel burn times (seconds).
 
+export const PLANKS = [B.PLANKS, B.BIRCH_PLANKS, B.SPRUCE_PLANKS];
+export const LOGS = [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG];
+export const WOOLS = Object.keys(WOOL_COLORS).map((c) => B[`${c.toUpperCase()}_WOOL`]);
+
 export const SMELTING = new Map([
   [B.IRON_ORE, I.IRON_INGOT],
   [B.GOLD_ORE, I.GOLD_INGOT],
   [B.SAND, B.GLASS],
   [B.COBBLESTONE, B.STONE],
-  [B.LOG, I.COAL],
-  [B.BIRCH_LOG, I.COAL],
-  [B.SPRUCE_LOG, I.COAL],
+  [B.LOG, I.CHARCOAL],
+  [B.BIRCH_LOG, I.CHARCOAL],
+  [B.SPRUCE_LOG, I.CHARCOAL],
   [B.CACTUS, B.GREEN_WOOL],
+  [B.COPPER_ORE, I.COPPER_INGOT],
+  [B.CLAY, B.TERRACOTTA],
+  [I.CLAY_BALL, I.BRICK],
+  [I.POTATO, I.BAKED_POTATO],
+  [B.STONE, B.SMOOTH_STONE],
+  [B.COBBLED_DEEPSLATE, B.DEEPSLATE],
+  [B.STONE_BRICKS, B.CRACKED_STONE_BRICKS],
+  [B.SANDSTONE, B.SMOOTH_SANDSTONE],
+  [B.NETHER_QUARTZ_ORE, I.QUARTZ],
+  [B.REDSTONE_ORE, I.REDSTONE],
+  [B.LAPIS_ORE, I.LAPIS_LAZULI],
+  [B.EMERALD_ORE, I.EMERALD],
+  [B.DIAMOND_ORE, I.DIAMOND],
+  [B.COAL_ORE, I.COAL],
   [I.RAW_PORKCHOP, I.COOKED_PORKCHOP],
   [I.RAW_BEEF, I.STEAK],
   [I.RAW_CHICKEN, I.COOKED_CHICKEN],
@@ -505,12 +904,16 @@ export const SMELTING = new Map([
 export const SMELT_TIME = 10;
 
 export function fuelTime(id) {
-  if (id === I.COAL) return 80;
+  if (id === I.COAL || id === I.CHARCOAL) return 80;
   if (id === B.COAL_BLOCK) return 800;
-  if (id === I.STICK) return 5;
-  if (id === B.LOG || id === B.BIRCH_LOG || id === B.SPRUCE_LOG || id === B.PLANKS) return 15;
-  if (id === B.CRAFTING_TABLE || id === B.OAK_FENCE || id === B.CHEST || id === B.BOOKSHELF) return 15;
+  if (id === I.BLAZE_ROD) return 120;
+  if (id === I.STICK || id === I.BOWL || BLOCKS[id]?.sapling) return 5;
+  if (LOGS.includes(id) || PLANKS.includes(id)) return 15;
+  if (id === B.CRAFTING_TABLE || id === B.OAK_FENCE || id === B.CHEST || id === B.BOOKSHELF || id === B.LADDER) return 15;
+  if (id === I.BOW || id === I.OAK_DOOR) return 10;
+  if (id === B.HAY_BALE) return 0;
   if (id === B.OAK_SLAB) return 7.5;
+  if (BLOCKS[id]?.name.endsWith('_wool')) return 5;
   const it = ITEMS.get(id);
   if (it?.tool && it.tool.tierKey === 'wooden') return 10;
   return 0;
@@ -528,20 +931,22 @@ function shapeless(ingredients, result, count = 1) {
   RECIPES.push({ type: 'shapeless', ingredients, result, count });
 }
 
+const ANY_PLANKS = PLANKS;
+const COBBLES = [B.COBBLESTONE, B.COBBLED_DEEPSLATE];
 shapeless([B.LOG], B.PLANKS, 4);
-shapeless([B.BIRCH_LOG], B.PLANKS, 4);
-shapeless([B.SPRUCE_LOG], B.PLANKS, 4);
-shaped(['P', 'P'], { P: B.PLANKS }, I.STICK, 4);
-shaped(['PP', 'PP'], { P: B.PLANKS }, B.CRAFTING_TABLE);
-shaped(['C', 'S'], { C: I.COAL, S: I.STICK }, B.TORCH, 4);
+shapeless([B.BIRCH_LOG], B.BIRCH_PLANKS, 4);
+shapeless([B.SPRUCE_LOG], B.SPRUCE_PLANKS, 4);
+shaped(['P', 'P'], { P: ANY_PLANKS }, I.STICK, 4);
+shaped(['PP', 'PP'], { P: ANY_PLANKS }, B.CRAFTING_TABLE);
+shaped(['C', 'S'], { C: [I.COAL, I.CHARCOAL], S: I.STICK }, B.TORCH, 4);
 shaped(['SS', 'SS'], { S: B.SAND }, B.SANDSTONE);
 shaped(['SS', 'SS'], { S: B.STONE }, B.STONE_BRICKS, 4);
-shaped(['CCC', 'C C', 'CCC'], { C: B.COBBLESTONE }, B.FURNACE);
-shaped(['PPP', 'P P', 'PPP'], { P: B.PLANKS }, B.CHEST);
-shaped(['PSP', 'PSP'], { P: B.PLANKS, S: I.STICK }, B.OAK_FENCE, 3);
-shaped(['P  ', 'PP ', 'PPP'], { P: B.PLANKS }, B.OAK_STAIRS, 4);
+shaped(['CCC', 'C C', 'CCC'], { C: COBBLES }, B.FURNACE);
+shaped(['PPP', 'P P', 'PPP'], { P: ANY_PLANKS }, B.CHEST);
+shaped(['PSP', 'PSP'], { P: ANY_PLANKS, S: I.STICK }, B.OAK_FENCE, 3);
+shaped(['P  ', 'PP ', 'PPP'], { P: ANY_PLANKS }, B.OAK_STAIRS, 4);
 shaped(['C  ', 'CC ', 'CCC'], { C: B.COBBLESTONE }, B.COBBLE_STAIRS, 4);
-shaped(['PPP'], { P: B.PLANKS }, B.OAK_SLAB, 6);
+shaped(['PPP'], { P: ANY_PLANKS }, B.OAK_SLAB, 6);
 shaped(['CCC'], { C: B.COBBLESTONE }, B.COBBLE_SLAB, 6);
 shaped(['SSS'], { S: B.STONE }, B.STONE_SLAB, 6);
 shaped(['I', 'T'], { I: I.IRON_INGOT, T: B.TORCH }, B.LANTERN);
@@ -549,7 +954,7 @@ shaped(['GSG', 'SGS', 'GSG'], { G: I.GUNPOWDER, S: B.SAND }, B.TNT);
 shaped(['WWW'], { W: I.WHEAT }, I.BREAD);
 shapeless([I.IRON_INGOT, I.FLINT], I.FLINT_AND_STEEL);
 for (const tier of TOOL_TIERS) {
-  const M = tier.material;
+  const M = tier.key === 'wooden' ? ANY_PLANKS : tier.key === 'stone' ? COBBLES : tier.material;
   const id = (type) => I[`${tier.key.toUpperCase()}_${type}`];
   shaped(['MMM', ' S ', ' S '], { M, S: I.STICK }, id('PICKAXE'));
   shaped(['MM', 'MS', ' S'], { M, S: I.STICK }, id('AXE'));
@@ -562,9 +967,58 @@ const STORAGE = [
   [I.IRON_INGOT, B.IRON_BLOCK],
   [I.GOLD_INGOT, B.GOLD_BLOCK],
   [I.DIAMOND, B.DIAMOND_BLOCK],
+  [I.EMERALD, B.EMERALD_BLOCK],
+  [I.LAPIS_LAZULI, B.LAPIS_BLOCK],
+  [I.REDSTONE, B.REDSTONE_BLOCK],
+  [I.WHEAT, B.HAY_BALE],
+  [I.IRON_NUGGET, I.IRON_INGOT],
+  [I.GOLD_NUGGET, I.GOLD_INGOT],
 ];
 for (const [material, blockId] of STORAGE) {
   shaped(['MMM', 'MMM', 'MMM'], { M: material }, blockId);
   shapeless([blockId], material, 9);
 }
 shapeless([B.COBBLESTONE, B.TALL_GRASS], B.MOSSY_COBBLESTONE);
+shaped([' ST', 'S T', ' ST'], { S: I.STICK, T: I.STRING }, I.BOW);
+shaped(['F', 'S', 'E'], { F: I.FLINT, S: I.STICK, E: I.FEATHER }, I.ARROW, 4);
+shaped(['I I', ' I '], { I: I.IRON_INGOT }, I.BUCKET);
+shaped([' I', 'I '], { I: I.IRON_INGOT }, I.SHEARS);
+shapeless([I.BONE], I.BONE_MEAL, 3);
+shaped(['SSS'], { S: B.SUGAR_CANE }, I.PAPER, 3);
+shapeless([B.SUGAR_CANE], I.SUGAR);
+shapeless([I.PAPER, I.PAPER, I.PAPER, I.LEATHER], I.BOOK);
+shaped(['PPP', 'BBB', 'PPP'], { P: ANY_PLANKS, B: I.BOOK }, B.BOOKSHELF);
+shapeless([B.PUMPKIN, I.SUGAR, I.EGG], I.PUMPKIN_PIE);
+shapeless([I.BOWL, B.RED_MUSHROOM, B.BROWN_MUSHROOM], I.MUSHROOM_STEW);
+shaped(['P P', ' P '], { P: ANY_PLANKS }, I.BOWL, 4);
+shaped(['GGG', 'GAG', 'GGG'], { G: I.GOLD_INGOT, A: I.APPLE }, I.GOLDEN_APPLE);
+shaped([' I ', 'IRI', ' I '], { I: I.IRON_INGOT, R: I.REDSTONE }, I.COMPASS);
+shaped([' G ', 'GRG', ' G '], { G: I.GOLD_INGOT, R: I.REDSTONE }, I.CLOCK);
+shaped(['P', 'T'], { P: B.PUMPKIN, T: B.TORCH }, B.JACK_O_LANTERN);
+shaped(['BB', 'BB'], { B: I.BRICK }, B.BRICKS);
+shaped(['CC', 'CC'], { C: I.CLAY_BALL }, B.CLAY);
+shaped(['SS', 'SS'], { S: I.SNOWBALL }, B.SNOW);
+shaped(['SSS'], { S: B.SNOW }, B.SNOW_LAYER, 6);
+shaped(['GGG', 'GGG'], { G: B.GLASS }, B.GLASS_PANE, 16);
+shaped(['III', 'III'], { I: I.IRON_INGOT }, B.IRON_BARS, 16);
+shaped(['S S', 'SSS', 'S S'], { S: I.STICK }, B.LADDER, 3);
+shaped(['PP', 'PP', 'PP'], { P: ANY_PLANKS }, I.OAK_DOOR, 3);
+shaped(['WWW', 'PPP'], { W: WOOLS, P: ANY_PLANKS }, I.RED_BED);
+shaped(['SS', 'SS'], { S: I.STRING }, B.WHITE_WOOL);
+shaped(['I I', 'ISI', 'I I'], { I: I.IRON_INGOT, S: I.STICK }, B.RAIL_NS, 16);
+shaped(['SS', 'SS'], { S: B.GRANITE }, B.POLISHED_GRANITE, 4);
+shaped(['SS', 'SS'], { S: B.DIORITE }, B.POLISHED_DIORITE, 4);
+shaped(['SS', 'SS'], { S: B.ANDESITE }, B.POLISHED_ANDESITE, 4);
+shaped(['SS', 'SS'], { S: B.SANDSTONE }, B.CUT_SANDSTONE, 4);
+shaped(['S', 'S'], { S: B.SANDSTONE }, B.CHISELED_SANDSTONE);
+shaped(['S', 'S'], { S: B.STONE_BRICKS }, B.CHISELED_STONE_BRICKS);
+shapeless([B.STONE_BRICKS, B.TALL_GRASS], B.MOSSY_STONE_BRICKS);
+shaped(['QQ', 'QQ'], { Q: I.QUARTZ }, B.QUARTZ_BLOCK);
+ARMOR_MATERIALS.forEach((m, mi) => {
+  const M = m === 'leather' ? I.LEATHER : m === 'iron' ? I.IRON_INGOT : m === 'golden' ? I.GOLD_INGOT : I.DIAMOND;
+  const base = 350 + mi * 4;
+  shaped(['MMM', 'M M'], { M }, base);
+  shaped(['M M', 'MMM', 'MMM'], { M }, base + 1);
+  shaped(['MMM', 'M M', 'M M'], { M }, base + 2);
+  shaped(['M M', 'M M'], { M }, base + 3);
+});

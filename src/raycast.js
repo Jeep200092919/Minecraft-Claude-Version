@@ -37,8 +37,9 @@ function rayBox(ox, oy, oz, dx, dy, dz, box) {
 const NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 // Returns the first targetable block hit within maxDist, or null.
-// `getBlock(x, y, z)` supplies block ids.
-export function raycast(getBlock, origin, dir, maxDist) {
+// `getBlock(x, y, z)` supplies block ids. With `liquids`, water and lava
+// blocks are hit too (buckets).
+export function raycast(getBlock, origin, dir, maxDist, liquids = false) {
   let [x, y, z] = origin.map(Math.floor);
   const [dx, dy, dz] = dir;
   const stepX = dx > 0 ? 1 : -1, stepY = dy > 0 ? 1 : -1, stepZ = dz > 0 ? 1 : -1;
@@ -50,7 +51,7 @@ export function raycast(getBlock, origin, dir, maxDist) {
   let t = 0;
   for (let i = 0; i < 256 && t <= maxDist; i++) {
     const id = getBlock(x, y, z);
-    if (id && BLOCKS[id].targetable) {
+    if (id && (BLOCKS[id].targetable || (liquids && BLOCKS[id].liquid))) {
       const hit = rayBox(origin[0] - x, origin[1] - y, origin[2] - z, dx, dy, dz, selectionBox(id));
       if (hit && hit.t <= maxDist) {
         const face = hit.face >= 0 ? hit.face : 2;

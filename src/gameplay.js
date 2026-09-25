@@ -53,27 +53,51 @@ export function tickFurnaces(game, dt) {
     }
     const lit = be.burn > 0;
     const want = furnaceVariant(b.facing, lit);
-    if (want !== id) world.setBlock(x, y, z, want);
+    if (want !== id) game.setBlockSynced(x, y, z, want);
   }
 }
 
-// Crops grow a stage now and then when they have enough light.
+// Crops grow a stage now and then when they have enough light; saplings
+// eventually become trees.
 export function tickCrops(game, dt) {
   const world = game.world;
+  if (game.net && !game.net.isAuthority) return;
   game.cropTimer = (game.cropTimer || 0) + dt;
   if (game.cropTimer < 1) return;
   game.cropTimer = 0;
   for (const [key, [x, y, z]] of world.crops) {
     if (!world.isReady(x, z)) continue;
     const id = world.getBlock(x, y, z);
-    if (id < B.WHEAT_0 || id > B.WHEAT_3) {
+    const b = BLOCKS[id];
+    if (b.crop === undefined && !b.sapling) {
       world.crops.delete(key);
       continue;
     }
-    if (id === B.WHEAT_3 || Math.random() > 1 / 30) continue;
     if (Math.max(world.getSkyLight(x, y, z), world.getBlockLight(x, y, z)) < 9) continue;
-    world.setBlock(x, y, z, id + 1);
+    if (b.sapling) {
+      if (Math.random() < 1 / 60) growSapling(game, x, y, z);
+      continue;
+    }
+    if (b.crop >= 3 || Math.random() > 1 / 30) continue;
+    game.setBlockSynced(x, y, z, id + 1);
   }
+}
+
+// Replaces a sapling with a full tree if there is room for it.
+export function growSapling(game, x, y, z) {
+  const w = game.world;
+  const b = BLOCKS[w.getBlock(x, y, z)];
+  if (!b.sapling) return false;
+  const free = (id) => id === B.AIR || BLOCKS[id].replaceable || BLOCKS[id].waving;
+  for (let k = 1; k <= 6; k++) if (!free(w.getBlock(x, y + k, z))) return false;
+  game.setBlockSynced(x, y, z, B.AIR);
+  const put = (wx, wy, wz, id) => {
+    const cur = w.getBlock(wx, wy, wz);
+    if (cur === B.AIR || (BLOCKS[cur].replaceable && !BLOCKS[cur].liquid) || (BLOCKS[cur].waving && !BLOCKS[id].waving)) game.setBlockSynced(wx, wy, wz, id);
+  };
+  w.generator.growTree({ x, y, z, type: b.tree }, put, put);
+  if (w.getBlock(x, y - 1, z) === B.GRASS) game.setBlockSynced(x, y - 1, z, B.DIRT);
+  return true;
 }
 
 // Destroys blocks in a sphere and hurts everything nearby.
@@ -93,9 +117,13 @@ export function explode(game, x, y, z, power) {
         if (id === B.AIR) continue;
         const b = BLOCKS[id];
         if (b.hardness < 0 || b.hardness >= 50 || b.liquid) continue;
-        world.setBlock(bx, by, bz, B.AIR);
+        game.setBlockSynced(bx, by, bz, B.AIR);
         if (id === B.TNT) game.entities.primeTNT(bx, by, bz, 0.4 + Math.random());
-        if (b.container) world.removeBlockEntity(bx, by, bz);
+        else if (Math.random() < 1 / power) game.dropBlockLoot(id, bx, by, bz, 0);
+        if (b.container) {
+          const be = world.removeBlockEntity(bx, by, bz);
+          if (be) for (const st of be.slots) if (st) game.entities.dropItem(st, bx + 0.5, by + 0.5, bz + 0.5);
+        }
       }
     }
   }
@@ -107,11 +135,19 @@ export function explode(game, x, y, z, power) {
   const pd = hurt(p.pos, 1.8);
   if (pd > 0) {
     p.damage(pd, game.pendingEvents, game.creative);
+    game.net?.sendExplosion?.(x, y, z, power);
     p.knockback(p.pos[0] - x, p.pos[2] - z, 8);
   }
   for (const e of game.entities.list) {
     if (e.kind !== 'mob' || e.dead) continue;
     const md = hurt(e.pos, e.h);
     if (md > 0) e.hurt(md, [x, y, z], game.entities);
+  }
+  // Knock dropped items around.
+  for (const e of game.entities.list) {
+    if (e.kind !== 'item' && e.kind !== 'xp') continue;
+    const dx = e.pos[0] - x, dy = e.pos[1] - y, dz = e.pos[2] - z;
+    const d = Math.hypot(dx, dy, dz);
+    if (d < r * 2 && d > 0.01) { e.vel[0] += (dx / d) * 8; e.vel[1] += 5; e.vel[2] += (dz / d) * 8; }
   }
 }

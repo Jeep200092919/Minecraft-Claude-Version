@@ -3,6 +3,7 @@
 import { BLOCKS, ITEMS, isBlockItem, FACE_PX, FACE_PY, FACE_PZ } from './blocks.js';
 import { generateTextures, tilePixels, TILE, TINT_GRASS, TINT_FOLIAGE } from './textures.js';
 import { GLYPHS } from './font.js';
+import { mobSkins, PLAYER_SKIN_BASE } from './mobs.js';
 
 const GRASS_TINT = [0.56, 0.74, 0.35];
 const FOLIAGE_TINT = [0.45, 0.66, 0.19];
@@ -123,6 +124,17 @@ function sprite(pattern, colors, halfColors = null, scale = 2, halfLeft = false)
   return c.toDataURL();
 }
 
+const CHESTPLATE = [
+  '.oo...oo.',
+  'offoooffo',
+  'ohffffffo',
+  'offfffffo',
+  '.offfffo.',
+  '.offfffo.',
+  '.offfffo.',
+  '..ooooo..',
+];
+
 let hudSprites = null;
 export function hudIcons() {
   if (hudSprites) return hudSprites;
@@ -138,6 +150,11 @@ export function hudIcons() {
     foodFull: sprite(DRUMSTICK, foodFull),
     foodHalf: sprite(DRUMSTICK, foodFull, foodEmpty, 2, true),
     foodEmpty: sprite(DRUMSTICK, foodEmpty),
+    armorFull: sprite(CHESTPLATE, { o: '#2a2a2a', f: '#c8c8c8', h: '#ffffff' }),
+    armorHalf: sprite(CHESTPLATE, { o: '#2a2a2a', f: '#c8c8c8', h: '#ffffff' }, { o: '#2a2a2a', f: '#4a4a4a', h: '#555555' }),
+    armorEmpty: sprite(CHESTPLATE, { o: '#2a2a2a', f: '#3c3c3c', h: '#4a4a4a' }),
+    heartGold: sprite(HEART, { o: '#3a2600', f: '#f0c020', h: '#fff2a0' }),
+    heartGoldHalf: sprite(HEART, { o: '#3a2600', f: '#f0c020', h: '#fff2a0' }, empty),
   };
   return hudSprites;
 }
@@ -228,4 +245,39 @@ export function buttonTexture() {
   }
   ctx.putImageData(img, 0, 0);
   return c.toDataURL();
+}
+
+// Front view of a player skin (head, body, arms, legs), for the inventory.
+export function playerPreview(variant = 0) {
+  const key = `preview:${variant}`;
+  if (cache.has(key)) return cache.get(key);
+  const skins = mobSkins();
+  const base = (PLAYER_SKIN_BASE + variant) * 64 * 64 * 4;
+  const px = (x, y) => {
+    const o = base + (y * 64 + x) * 4;
+    return [skins.pixels[o], skins.pixels[o + 1], skins.pixels[o + 2], skins.pixels[o + 3]];
+  };
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 32;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(16, 32);
+  const blit = (sx, sy, w, h, dx, dy) => {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const [r, g, b, a] = px(sx + x, sy + y);
+        const o = ((dy + y) * 16 + dx + x) * 4;
+        img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = a;
+      }
+    }
+  };
+  blit(8, 8, 8, 8, 4, 0); // head front
+  blit(20, 20, 8, 12, 4, 8); // body front
+  blit(44, 20, 4, 12, 0, 8); // arms
+  blit(44, 20, 4, 12, 12, 8);
+  blit(4, 20, 4, 12, 4, 20); // legs
+  blit(4, 20, 4, 12, 8, 20);
+  ctx.putImageData(img, 0, 0);
+  const url = c.toDataURL();
+  cache.set(key, url);
+  return url;
 }

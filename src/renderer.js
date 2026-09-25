@@ -97,6 +97,7 @@ export class Renderer {
       rayMask: program(gl, S.FULLSCREEN_VS, S.RAYMASK_FS),
       rays: program(gl, S.FULLSCREEN_VS, S.RAYS_FS),
       composite: program(gl, S.FULLSCREEN_VS, S.COMPOSITE_FS),
+      weather: program(gl, S.WEATHER_VS, S.WEATHER_FS),
     };
     this.emptyVao = gl.createVertexArray();
     this.proj = mat4();
@@ -125,14 +126,20 @@ export class Renderer {
     const gl = this.gl;
     const tex = generateTextures();
     this.textures = tex;
-    this.texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
-    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 16, 16, tex.count, 0, gl.RGBA, gl.UNSIGNED_BYTE, tex.pixels);
-    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const makeArray = (pixels, layers) => {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
+      gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 16, 16, layers, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+    const L = 16 * 16 * 4;
+    this.itemTexture = makeArray(tex.pixels.subarray(tex.itemBase * L), Math.max(1, tex.itemCount));
+    this.texture = makeArray(tex.pixels.subarray(0, tex.blockCount * L), tex.blockCount);
     // No anisotropic filtering: several drivers then blur magnified texels.
     this.entityTexture = null;
   }
@@ -219,8 +226,45 @@ export class Renderer {
     gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 36, 12);
     gl.enableVertexAttribArray(2);
     gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 36, 28);
+    this.weatherBuffer = gl.createBuffer();
+    this.weatherVao = gl.createVertexArray();
+    gl.bindVertexArray(this.weatherVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.weatherBuffer);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 12);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24);
     gl.bindVertexArray(null);
     this.maxPointSize = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 64;
+  }
+
+  // Rain/snow columns and lightning (built by weather.js), alpha blended.
+  drawWeather(state, light, linear) {
+    const meshes = [[state.weatherMesh, light], [state.boltMesh, linear ? [12, 12, 16] : [1.5, 1.5, 1.6]]];
+    if (!meshes.some(([m]) => m)) return;
+    const gl = this.gl;
+    const p = this.prog.weather;
+    gl.useProgram(p.program);
+    gl.uniformMatrix4fv(p.u.uViewProj, false, this.viewProj);
+    gl.uniform1f(p.u.uLinear, linear ? 1 : 0);
+    gl.uniform1i(p.u.uTex, 0);
+    this.bindBlockTexture(0);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.disable(gl.CULL_FACE);
+    gl.bindVertexArray(this.weatherVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.weatherBuffer);
+    for (const [mesh, l] of meshes) {
+      if (!mesh) continue;
+      gl.uniform3fv(p.u.uLight, l);
+      gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STREAM_DRAW);
+      gl.drawArrays(gl.TRIANGLES, 0, mesh.length / 7);
+    }
+    gl.depthMask(true);
+    gl.enable(gl.CULL_FACE);
   }
 
   // One shared index buffer describes every quad (0,1,2, 0,2,3 pattern).
@@ -399,7 +443,7 @@ export class Renderer {
     perspective(this.proj, fovY, aspect, this.near, this.far);
     viewRotation(this.view, camera.yaw, camera.pitch);
     multiply(this.viewProj, this.proj, this.view);
-    const sky = skyState(state.ticks);
+    const sky = skyState(state.ticks, state.rain || 0, state.flash || 0);
     const visible = this.collectVisible(state);
     const frame = { state, sky, aspect, fovY, visible, cam: camera.pos, viewDist: state.renderDistance * CHUNK_SIZE };
     const dt = Math.min(0.2, Math.max(0, state.seconds - this.lastSeconds));
@@ -471,11 +515,12 @@ export class Renderer {
     const gl = this.gl;
     const u = prog.u;
     for (const e of entities) {
-      const blocksTex = e.texture === 'blocks';
-      if (!blocksTex && !this.entityTexture) continue;
+      const kind = e.texture || 'entity';
+      if (kind === 'entity' && !this.entityTexture) continue;
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, blocksTex ? this.texture : this.entityTexture);
-      gl.uniform1f(u.uUVScale, blocksTex ? 1 / 16 : 1 / 64);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, kind === 'blocks' ? this.texture : kind === 'items' ? this.itemTexture : this.entityTexture);
+      const baseScale = kind === 'entity' ? 1 / 64 : 1 / 16;
+      gl.uniform1f(u.uUVScale, e.uvScale || baseScale);
       gl.uniform3f(u.uOffset, e.pos[0] - cam[0], e.pos[1] - cam[1], e.pos[2] - cam[2]);
       gl.uniform3f(u.uOrigin, e.pos[0], e.pos[1], e.pos[2]);
       if (!shadowPass) {
@@ -505,7 +550,8 @@ export class Renderer {
     const gl = this.gl;
     const v = sky.vanilla;
     let fogColor = v.horizon;
-    let fogRange = [viewDist * 0.55, viewDist * 0.95];
+    const rainFog = 1 - 0.45 * (state.rain || 0);
+    let fogRange = [viewDist * 0.55 * rainFog, viewDist * 0.95 * rainFog];
     if (state.inLava) { fogColor = [0.75, 0.25, 0.04]; fogRange = [0, 2.5]; }
     else if (state.underwater) { fogColor = mix3([0.02, 0.04, 0.12], [0.1, 0.26, 0.55], v.day); fogRange = [1, 28]; }
 
@@ -560,6 +606,7 @@ export class Renderer {
     gl.enable(gl.CULL_FACE);
 
     this.drawParticles(state, cam, v.skyLight, fogColor, fogRange, fovY, false);
+    this.drawWeather(state, v.skyLight.map((c) => c * 0.9), false);
     if (state.selection) this.drawSelection(state.selection, cam);
     gl.disable(gl.BLEND);
     if (state.showHand) this.drawHeld(p, state, aspect, sky, false);
@@ -750,7 +797,7 @@ export class Renderer {
 
     const underwater = !!state.underwater;
     const fog = {
-      range: [viewDist * 0.6, viewDist * 1.0],
+      range: [viewDist * 0.6 * (1 - 0.45 * (state.rain || 0)), viewDist * (1 - 0.35 * (state.rain || 0))],
       haze: 0.0025,
       underwater,
       waterColor: mix3([0.004, 0.012, 0.03], [0.03, 0.12, 0.22], sky.day),
@@ -804,6 +851,7 @@ export class Renderer {
 
     const partLight = sky.ambientSky.map((v, i) => v * 1.6 + sky.lightColor[i] * 0.6);
     this.drawParticles(state, cam, partLight, sky.horizon, fog.range, fovY, true);
+    this.drawWeather(state, partLight.map((c) => c * 0.8), true);
     if (state.selection) this.drawSelection(state.selection, cam);
     gl.disable(gl.BLEND);
     if (state.showHand) {
@@ -993,7 +1041,7 @@ export class Renderer {
         built = buildExtrudedSprite(itemSpriteName(itemId));
       }
       const kind = !itemId ? 'hand' : built.uvScale ? 'flat' : 'block';
-      this.heldCache.set(key, { mesh: this.createMesh(built.data, built.quads), kind, uvScale: built.uvScale || 1 / 16 });
+      this.heldCache.set(key, { mesh: this.createMesh(built.data, built.quads), kind, uvScale: built.uvScale || 1 / 16, atlas: built.atlas || 'blocks' });
     }
     return this.heldCache.get(key);
   }
@@ -1056,7 +1104,10 @@ export class Renderer {
     const [sl, bl] = state.light || [15, 0];
     gl.uniform3f(u.uLightOverride, sl / 15, bl / 15, 1);
     gl.disable(gl.CULL_FACE);
-    this.bindBlockTexture(0);
+    if (held.atlas === 'items') {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.itemTexture);
+    } else this.bindBlockTexture(0);
     gl.uniform1f(u.uUVScale, held.uvScale);
     gl.bindVertexArray(held.mesh.vao);
     gl.drawElements(gl.TRIANGLES, held.mesh.count, gl.UNSIGNED_INT, 0);

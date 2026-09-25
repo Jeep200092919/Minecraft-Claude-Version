@@ -124,6 +124,85 @@ export class Sound {
     if (this._ready()) this._tone(900, 0.05, 0.15, 0, 600, 'triangle');
   }
 
+  bow(power = 1) {
+    if (!this._ready()) return;
+    this._burst('wool', 0.18, 0.35, 1.6);
+    this._tone(300 + power * 200, 0.12, 0.12, 0, 900, 'triangle');
+  }
+
+  arrowHit() {
+    if (this._ready()) this._burst('wood', 0.12, 0.4, 1.4);
+  }
+
+  hit() {
+    if (this._ready()) this._tone(220, 0.08, 0.2, 0, 140, 'square');
+  }
+
+  throw() {
+    if (this._ready()) this._burst('wool', 0.14, 0.3, 2);
+  }
+
+  door(open) {
+    if (!this._ready()) return;
+    this._burst('wood', 0.25, 0.45, open ? 0.8 : 0.6);
+    this._tone(open ? 180 : 140, 0.18, 0.12, 0, open ? 240 : 100, 'sawtooth');
+  }
+
+  equip() {
+    if (this._ready()) { this._burst('stone', 0.12, 0.3, 2.2); this._tone(520, 0.08, 0.1, 0.05, 780, 'triangle'); }
+  }
+
+  toolBreak() {
+    if (!this._ready()) return;
+    this._burst('glass', 0.3, 0.5, 1.2);
+    this._tone(800, 0.2, 0.2, 0, 300, 'square');
+  }
+
+  shear() {
+    if (this._ready()) { this._burst('wool', 0.1, 0.4, 2.5); this._burst('wool', 0.1, 0.35, 2.8); }
+  }
+
+  orb() {
+    if (this._ready()) this._tone(1200 + Math.random() * 600, 0.08, 0.1, 0, 1800, 'sine');
+  }
+
+  levelUp() {
+    if (!this._ready()) return;
+    [523, 659, 784, 1047].forEach((f, i) => this._tone(f, 0.18, 0.14, i * 0.07, f * 1.01, 'triangle'));
+  }
+
+  // Continuous rain: looping filtered noise whose volume follows intensity.
+  setRain(v) {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    if (!this.rainGain) {
+      const ctx = this.ctx;
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'bandpass';
+      lp.frequency.value = 1800;
+      lp.Q.value = 0.5;
+      this.rainGain = ctx.createGain();
+      this.rainGain.gain.value = 0;
+      src.connect(lp).connect(this.rainGain).connect(this.master);
+      src.start();
+    }
+    this.rainGain.gain.value = v * 0.16;
+  }
+
+  thunder(dist = 20) {
+    if (!this._ready()) return;
+    const delay = Math.min(3, dist / 80);
+    const g = Math.max(0.2, 1 - dist / 120);
+    this._tone(55, 2.2, 0.5 * g, delay, 30, 'sawtooth');
+    this._burst('gravel', 1.8, 0.8 * g, 0.25);
+  }
+
+  teleport() {
+    if (this._ready()) this._tone(300, 0.4, 0.3, 0, 1400, 'sawtooth');
+  }
+
   // A filtered oscillator voice with an optional pitch glide and tremolo.
   _voice(type, f0, f1, dur, gain, { filter = 900, trem = 0, delay = 0 } = {}) {
     const ctx = this.ctx;

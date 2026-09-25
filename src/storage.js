@@ -70,7 +70,7 @@ export function decodeEdits(obj) {
 export function encodeBlockEntities(map) {
   const out = [];
   for (const [key, be] of map || []) {
-    out.push([key, { ...be, slots: be.slots.map((s) => (s ? [s.id, s.count] : 0)) }]);
+    out.push([key, { ...be, slots: be.slots.map((s) => (s ? (s.dmg ? [s.id, s.count, s.dmg] : [s.id, s.count]) : 0)) }]);
   }
   return out;
 }
@@ -81,7 +81,7 @@ export function decodeBlockEntities(list) {
   for (const entry of list) {
     if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !entry[1] || !Array.isArray(entry[1].slots)) continue;
     const be = { ...entry[1] };
-    be.slots = be.slots.map((s) => (Array.isArray(s) && s[1] > 0 ? { id: s[0], count: s[1] } : null));
+    be.slots = be.slots.map((s) => (Array.isArray(s) && s[1] > 0 ? (s[2] > 0 ? { id: s[0], count: s[1], dmg: s[2] } : { id: s[0], count: s[1] }) : null));
     map.set(entry[0], be);
   }
   return map;

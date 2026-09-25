@@ -22,13 +22,23 @@ const MAX_TERRAIN = CHUNK_HEIGHT - 14;
 const LAVA_LEVEL = 10;
 
 const ORES = [
-  { id: B.COAL_ORE, veins: 18, minY: 5, maxY: 110, size: 10 },
-  { id: B.IRON_ORE, veins: 11, minY: 5, maxY: 64, size: 7 },
-  { id: B.GOLD_ORE, veins: 3, minY: 5, maxY: 32, size: 6 },
-  { id: B.DIAMOND_ORE, veins: 2, minY: 4, maxY: 16, size: 5 },
+  { id: B.GRANITE, veins: 7, minY: 5, maxY: 100, size: 34 },
+  { id: B.DIORITE, veins: 7, minY: 5, maxY: 100, size: 34 },
+  { id: B.ANDESITE, veins: 7, minY: 5, maxY: 100, size: 34 },
   { id: B.DIRT, veins: 5, minY: 20, maxY: 100, size: 24 },
   { id: B.GRAVEL, veins: 4, minY: 5, maxY: 100, size: 20 },
+  { id: B.COAL_ORE, veins: 18, minY: 5, maxY: 110, size: 10 },
+  { id: B.COPPER_ORE, veins: 8, minY: 20, maxY: 90, size: 8 },
+  { id: B.IRON_ORE, veins: 11, minY: 3, maxY: 64, size: 7, deep: B.DEEPSLATE_IRON_ORE },
+  { id: B.GOLD_ORE, veins: 3, minY: 3, maxY: 32, size: 6, deep: B.DEEPSLATE_GOLD_ORE },
+  { id: B.LAPIS_ORE, veins: 2, minY: 5, maxY: 32, size: 6 },
+  { id: B.REDSTONE_ORE, veins: 6, minY: 3, maxY: 16, size: 7, deep: B.DEEPSLATE_REDSTONE_ORE },
+  { id: B.DIAMOND_ORE, veins: 2, minY: 3, maxY: 16, size: 5, deep: B.DEEPSLATE_DIAMOND_ORE },
 ];
+const FLOWERS = {
+  plains: [B.DANDELION, B.POPPY, B.AZURE_BLUET, B.OXEYE_DAISY, B.CORNFLOWER, B.RED_TULIP, B.ORANGE_TULIP],
+  forest: [B.DANDELION, B.POPPY, B.LILY_OF_THE_VALLEY, B.ALLIUM, B.CORNFLOWER],
+};
 
 export class WorldGenerator {
   constructor(seed) {
@@ -133,6 +143,7 @@ export class WorldGenerator {
         const { top, filler, depth, deep } = this.surface(col, wx, wz);
         const h = col.height;
         const safeSurface = h > SEA_LEVEL + 3;
+        const deepLevel = 12 + ((hashCoords(this.seed ^ 0xdee9, wx, 0, wz) & 3) >> 1);
         for (let y = 0; y < CHUNK_HEIGHT; y++) {
           let id;
           if (y === 0) id = B.BEDROCK;
@@ -144,6 +155,7 @@ export class WorldGenerator {
           else if (y <= SEA_LEVEL) id = B.WATER;
           else id = B.AIR;
 
+          if (id === B.STONE && y < deepLevel) id = B.DEEPSLATE;
           if (id !== B.AIR && id !== B.WATER && id !== B.BEDROCK && y <= h && (safeSurface || y < h - 4)) {
             if (this.isCave(cave, x, y, z)) id = y <= LAVA_LEVEL ? B.LAVA : B.AIR;
           }
@@ -221,7 +233,9 @@ export class WorldGenerator {
         for (let k = 0; k < ore.size; k++) {
           if (x >= 0 && x < 16 && z >= 0 && z < 16 && y > 0 && y < CHUNK_HEIGHT) {
             const i = (y << 8) | (z << 4) | x;
-            if (chunk.blocks[i] === B.STONE) chunk.blocks[i] = ore.id;
+            const cur = chunk.blocks[i];
+            if (cur === B.STONE) chunk.blocks[i] = ore.id;
+            else if (cur === B.DEEPSLATE && ore.deep) chunk.blocks[i] = ore.deep;
           }
           const r = rng();
           if (r < 0.34) x += rng() < 0.5 ? 1 : -1;
@@ -234,6 +248,32 @@ export class WorldGenerator {
 
   decorate(chunk, cols) {
     const { blocks } = chunk;
+    const at = (x, y, z) => (y << 8) | (z << 4) | x;
+    // Emeralds are found only in mountains, as single blocks.
+    const erng = rngFor(this.seed ^ 0xe3e, chunk.cx, 5, chunk.cz);
+    if (cols[136].biome === BIOME.MOUNTAINS) {
+      for (let k = 0; k < 4; k++) {
+        const x = Math.floor(erng() * 16), z = Math.floor(erng() * 16), y = 20 + Math.floor(erng() * 60);
+        if (blocks[at(x, y, z)] === B.STONE) blocks[at(x, y, z)] = B.EMERALD_ORE;
+      }
+    }
+    // Mushrooms on dark cave floors.
+    for (let k = 0; k < 3; k++) {
+      const x = Math.floor(erng() * 16), z = Math.floor(erng() * 16);
+      const top = cols[z * 16 + x].height - 6;
+      for (let y = 8; y < top; y++) {
+        if (blocks[at(x, y, z)] === B.AIR && (blocks[at(x, y - 1, z)] === B.STONE || blocks[at(x, y - 1, z)] === B.DEEPSLATE)) {
+          if (erng() < 0.4) blocks[at(x, y, z)] = erng() < 0.5 ? B.RED_MUSHROOM : B.BROWN_MUSHROOM;
+          break;
+        }
+      }
+    }
+    const waterNear = (wx, wz) => {
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.column(wx + dx, wz + dz).height < SEA_LEVEL) return true;
+      return false;
+    };
+    // Patches: one value per 4x4 area, stable across chunks.
+    const patch = (wx, wz, salt) => hashCoords(this.seed ^ salt, wx >> 2, 7, wz >> 2) / 4294967296;
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let x = 0; x < CHUNK_SIZE; x++) {
         const col = cols[z * CHUNK_SIZE + x];
@@ -242,13 +282,40 @@ export class WorldGenerator {
         const wx = chunk.cx * 16 + x, wz = chunk.cz * 16 + z;
         const top = blocks[(y << 8) | (z << 4) | x];
         const above = (y + 1 << 8) | (z << 4) | x;
-        if (blocks[above] !== B.AIR) continue;
         const r = hashCoords(this.seed ^ 0xdec0, wx, 0, wz) / 4294967296;
+        const r2 = hashCoords(this.seed ^ 0xf10, wx, 1, wz) / 4294967296;
+        if (y < SEA_LEVEL && blocks[above] === B.WATER) {
+          // Under water: clay patches; frozen or lily-padded surfaces.
+          if ((top === B.SAND || top === B.GRAVEL || top === B.DIRT) && patch(wx, wz, 0xc1a) < 0.12) {
+            blocks[at(x, y, z)] = B.CLAY;
+            if (blocks[at(x, y - 1, z)] !== B.AIR) blocks[at(x, y - 1, z)] = B.CLAY;
+          }
+          if (col.biome === BIOME.SNOWY) blocks[at(x, SEA_LEVEL, z)] = B.ICE;
+          else if (y >= SEA_LEVEL - 3 && r2 < 0.02 && col.biome !== BIOME.OCEAN) blocks[at(x, SEA_LEVEL + 1, z)] = B.LILY_PAD;
+          continue;
+        }
+        if (blocks[above] !== B.AIR) continue;
+        // Sugar cane beside water.
+        if ((top === B.GRASS || top === B.SAND || top === B.DIRT) && y === SEA_LEVEL && r2 < 0.18 && waterNear(wx, wz)) {
+          const hgt = 1 + Math.floor(r2 * 16) % 3;
+          for (let k = 1; k <= hgt; k++) blocks[at(x, y + k, z)] = B.SUGAR_CANE;
+          continue;
+        }
         if (top === B.GRASS) {
           const grassChance = col.biome === BIOME.PLAINS ? 0.2 : col.biome === BIOME.FOREST ? 0.12 : 0.05;
           const flowerChance = col.biome === BIOME.PLAINS ? 0.022 : 0.012;
-          if (r < flowerChance) blocks[above] = r < flowerChance / 2 ? B.DANDELION : B.POPPY;
-          else if (r < flowerChance + grassChance) blocks[above] = B.TALL_GRASS;
+          const flowers = col.biome === BIOME.FOREST ? FLOWERS.forest : FLOWERS.plains;
+          if (r < flowerChance) {
+            // Flowers grow in patches of one kind.
+            const kind = Math.floor(patch(wx, wz, 0xf1f) * 97) % flowers.length;
+            blocks[above] = flowers[kind];
+          } else if (r < flowerChance + grassChance) {
+            blocks[above] = col.biome === BIOME.FOREST && r2 < 0.25 ? B.FERN : B.TALL_GRASS;
+          } else if (r2 > 0.9993) blocks[above] = B.PUMPKIN;
+          else if (r2 > 0.9988 && r2 <= 0.99885) blocks[above] = B.MELON;
+          else if (col.biome === BIOME.FOREST && r2 < 0.004) blocks[above] = r2 < 0.002 ? B.RED_MUSHROOM : B.BROWN_MUSHROOM;
+        } else if (top === B.SNOWY_GRASS) {
+          blocks[above] = r < 0.06 ? B.FERN : B.SNOW_LAYER;
         } else if (top === B.SAND && col.biome === BIOME.DESERT) {
           if (r < 0.005) {
             const hgt = 1 + Math.floor((r / 0.005) * 3);

@@ -8,11 +8,32 @@ export function stack(id, count = 1) {
   return { id, count };
 }
 
-// 36 slots: 0-8 are the hotbar, 9-35 the main inventory.
+// 36 slots: 0-8 are the hotbar, 9-35 the main inventory; plus four armour
+// slots (helmet, chestplate, leggings, boots). Stacks are { id, count } with
+// an optional `dmg` (uses so far) for tools and armour.
 export class Inventory {
   constructor(size = 36) {
     this.slots = new Array(size).fill(null);
+    this.armor = [null, null, null, null];
     this.selected = 0;
+  }
+
+  // Adds a whole stack, keeping its damage. Returns the leftover count.
+  addStack(s) {
+    if (s.dmg) {
+      const i = this.slots.findIndex((x) => !x);
+      if (i < 0) return s.count;
+      this.slots[i] = { ...s };
+      return 0;
+    }
+    return this.add(s.id, s.count);
+  }
+
+  // Total armour points of the worn pieces.
+  armorPoints() {
+    let n = 0;
+    for (const a of this.armor) if (a) n += ITEMS.get(a.id)?.armor?.points || 0;
+    return n;
   }
 
   get selectedStack() {
@@ -88,17 +109,23 @@ export class Inventory {
   }
 
   toJSON() {
-    return { slots: this.slots.map((s) => (s ? [s.id, s.count] : 0)), selected: this.selected };
+    const enc = (s) => (s ? (s.dmg ? [s.id, s.count, s.dmg] : [s.id, s.count]) : 0);
+    return { slots: this.slots.map(enc), armor: this.armor.map(enc), selected: this.selected };
   }
 
   static fromJSON(data) {
     const inv = new Inventory();
+    const dec = (s) => {
+      if (!Array.isArray(s) || !ITEMS.has(s[0]) || !(s[1] > 0)) return null;
+      const st = stack(s[0], Math.min(s[1], maxStack(s[0])));
+      if (s[2] > 0) st.dmg = s[2];
+      return st;
+    };
     if (data && Array.isArray(data.slots)) {
       data.slots.forEach((s, i) => {
-        if (i < inv.slots.length && Array.isArray(s) && ITEMS.has(s[0]) && s[1] > 0) {
-          inv.slots[i] = stack(s[0], Math.min(s[1], maxStack(s[0])));
-        }
+        if (i < inv.slots.length) inv.slots[i] = dec(s);
       });
+      if (Array.isArray(data.armor)) data.armor.forEach((s, i) => { if (i < 4) inv.armor[i] = dec(s); });
       inv.selected = Math.min(8, Math.max(0, data.selected | 0));
     }
     return inv;
@@ -169,13 +196,15 @@ export function matchRecipe(grid, size) {
   const h = maxY - minY + 1;
   const at = (x, y) => grid[(minY + y) * size + (minX + x)];
 
+  // An ingredient is an item id or a list of acceptable ids (e.g. any planks).
+  const fits = (want, id) => (Array.isArray(want) ? want.includes(id) : want === id);
   for (const r of RECIPES) {
     if (r.type === 'shapeless') {
       if (r.ingredients.length !== items.length) continue;
       const pool = [...items];
       let ok = true;
       for (const ing of r.ingredients) {
-        const i = pool.indexOf(ing);
+        const i = pool.findIndex((id) => fits(ing, id));
         if (i < 0) { ok = false; break; }
         pool.splice(i, 1);
       }
@@ -190,8 +219,8 @@ export function matchRecipe(grid, size) {
       for (let y = 0; y < h && ok; y++) {
         for (let x = 0; x < w && ok; x++) {
           const ch = r.pattern[y][mirror ? w - 1 - x : x] || ' ';
-          const want = ch === ' ' ? 0 : r.key[ch];
-          if ((at(x, y) || 0) !== want) ok = false;
+          const got = at(x, y) || 0;
+          if (ch === ' ' ? got !== 0 : !got || !fits(r.key[ch], got)) ok = false;
         }
       }
       if (ok) return { id: r.result, count: r.count };

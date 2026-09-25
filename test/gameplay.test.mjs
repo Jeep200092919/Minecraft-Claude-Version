@@ -40,7 +40,13 @@ test('slot clicks pick up, place, split and swap like Minecraft', () => {
 
 test('crafting recipes match shaped, mirrored and shapeless patterns', () => {
   assert.deepEqual(matchRecipe([B.LOG, 0, 0, 0], 2), { id: B.PLANKS, count: 4 });
-  assert.deepEqual(matchRecipe([0, 0, 0, B.BIRCH_LOG], 2), { id: B.PLANKS, count: 4 });
+  assert.deepEqual(matchRecipe([0, 0, 0, B.BIRCH_LOG], 2), { id: B.BIRCH_PLANKS, count: 4 });
+  // Any kind of planks works for plank recipes, even mixed.
+  assert.deepEqual(matchRecipe([B.BIRCH_PLANKS, 0, B.SPRUCE_PLANKS, 0], 2), { id: I.STICK, count: 4 });
+  assert.deepEqual(matchRecipe([B.PLANKS, B.BIRCH_PLANKS, B.SPRUCE_PLANKS, B.PLANKS], 2), { id: B.CRAFTING_TABLE, count: 1 });
+  assert.deepEqual(matchRecipe([0, I.CHARCOAL, 0, I.STICK], 2), { id: B.TORCH, count: 4 });
+  assert.deepEqual(matchRecipe([I.IRON_INGOT, I.IRON_INGOT, I.IRON_INGOT, I.IRON_INGOT, 0, I.IRON_INGOT, 0, 0, 0], 3), { id: I.IRON_HELMET, count: 1 });
+  assert.deepEqual(matchRecipe([0, I.STICK, I.STRING, I.STICK, 0, I.STRING, 0, I.STICK, I.STRING], 3), { id: I.BOW, count: 1 });
   assert.deepEqual(matchRecipe([B.PLANKS, 0, B.PLANKS, 0], 2), { id: I.STICK, count: 4 });
   assert.deepEqual(matchRecipe([B.PLANKS, B.PLANKS, B.PLANKS, B.PLANKS], 2), { id: B.CRAFTING_TABLE, count: 1 });
   assert.deepEqual(matchRecipe([0, I.COAL, 0, I.STICK], 2), { id: B.TORCH, count: 4 });

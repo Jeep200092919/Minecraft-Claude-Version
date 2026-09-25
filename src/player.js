@@ -57,6 +57,15 @@ export class Player {
     // Collision body used by physics.js.
     this.hw = HALF_W;
     this.h = PLAYER_HEIGHT;
+    this.armor = 0; // armour points, kept up to date by the game
+    this.absorption = 0; // golden-apple hearts
+    this.absorbTime = 0;
+    this.regenTime = 0;
+    this.regenTick = 0;
+    this.xpLevel = 0;
+    this.xpProgress = 0; // 0..1 towards the next level
+    this.xpTotal = 0;
+    this.onLadder = false;
   }
 
   addExhaustion(amount, creative) {
@@ -72,6 +81,26 @@ export class Player {
   eat(food) {
     this.hunger = Math.min(MAX_HUNGER, this.hunger + food.hunger);
     this.saturation = Math.min(this.hunger, this.saturation + food.saturation);
+    if (food.regen) this.regenTime = food.regen;
+    if (food.absorb) { this.absorption = food.absorb; this.absorbTime = 120; }
+  }
+
+  // Experience needed to go from `level` to the next one.
+  static xpForLevel(level) {
+    return level < 16 ? 2 * level + 7 : level < 31 ? 5 * level - 38 : 9 * level - 158;
+  }
+
+  addXP(amount) {
+    this.xpTotal += amount;
+    let points = this.xpProgress * Player.xpForLevel(this.xpLevel) + amount;
+    let levelled = false;
+    while (points >= Player.xpForLevel(this.xpLevel)) {
+      points -= Player.xpForLevel(this.xpLevel);
+      this.xpLevel++;
+      levelled = true;
+    }
+    this.xpProgress = points / Player.xpForLevel(this.xpLevel);
+    return levelled;
   }
 
   knockback(dx, dz, strength) {
@@ -107,10 +136,22 @@ export class Player {
     return IS_SOLID[world.getBlock(x, y, z)] === 1;
   }
 
-  damage(amount, events, creative) {
+  // opts.bypassArmor: falls, drowning, starvation and lava ignore armour.
+  damage(amount, events, creative, opts = {}) {
     if (creative || this.dead || amount <= 0) return;
     this.addExhaustion(0.1, creative);
+    if (!opts.bypassArmor && this.armor > 0) {
+      events.push({ type: 'armorHit', amount });
+      amount *= 1 - Math.min(20, this.armor) / 25;
+    }
+    if (this.absorption > 0) {
+      const a = Math.min(this.absorption, amount);
+      this.absorption -= a;
+      amount -= a;
+    }
     this.health = Math.max(0, this.health - amount);
+    // Health is shown in half hearts; keep it on the half-heart grid.
+    this.health = Math.round(this.health * 2) / 2;
     this.hurtTime = 0.4;
     this.sinceDamage = 0;
     events.push({ type: 'hurt' });
@@ -131,6 +172,11 @@ export class Player {
     this.fallDistance = 0;
     this.dead = false;
     this.flying = false;
+    this.absorption = 0;
+    this.regenTime = 0;
+    this.xpLevel = 0;
+    this.xpProgress = 0;
+    this.xpTotal = 0;
   }
 
   // Blocks overlapping the player's box (optionally grown by `grow`).
@@ -175,12 +221,32 @@ export class Player {
     else if (this.sneaking) speed = SNEAK_SPEED;
     else speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
 
-    const accel = this.flying ? 10 : this.onGround ? 16 : this.inWater || this.inLava ? 8 : 2.5;
+    const around = this.touching(world);
+    if (!this.flying) {
+      if (around.has(B.COBWEB)) speed *= 0.25;
+      const under = world.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] - 0.2), Math.floor(this.pos[2]));
+      if (under === B.SOUL_SAND) speed *= 0.5;
+      this.onIce = BLOCKS[under].slippery;
+    }
+    let accel = this.flying ? 10 : this.onGround ? 16 : this.inWater || this.inLava ? 8 : 2.5;
+    if (this.onIce && this.onGround) accel = 2.2;
     const k = Math.min(1, accel * dt);
     this.vel[0] += (wx * speed - this.vel[0]) * k;
     this.vel[2] += (wz * speed - this.vel[2]) * k;
 
-    if (this.flying) {
+    // Ladders: move up when pushing into them or jumping, slide down slowly,
+    // hold on while sneaking.
+    this.onLadder = false;
+    for (const id of around) if (BLOCKS[id].ladder) this.onLadder = true;
+    if (this.onLadder && !this.flying) {
+      this.fallDistance = 0;
+      if (input.jump || (this.collidedH && fwd !== 0)) this.vel[1] = 2.4;
+      else if (this.sneaking) this.vel[1] = 0;
+      else this.vel[1] = Math.max(this.vel[1] - GRAVITY * dt, -2.4);
+    } else if (around.has(B.COBWEB) && !this.flying) {
+      this.fallDistance = 0;
+      this.vel[1] = input.jump ? 0.6 : Math.max(this.vel[1] - GRAVITY * dt, -0.8);
+    } else if (this.flying) {
       const vy = ((input.jump ? 1 : 0) - (input.sneak ? 1 : 0)) * 8;
       this.vel[1] += (vy - this.vel[1]) * Math.min(1, dt * 10);
     } else if (this.inWater || this.inLava) {
@@ -235,7 +301,7 @@ export class Player {
     else if (fell > 0) this.fallDistance += fell;
     if (this.onGround && !wasOnGround) {
       if (this.fallDistance > 3) {
-        this.damage(Math.ceil(this.fallDistance - 3), events, creative);
+        this.damage(Math.ceil(this.fallDistance - 3), events, creative, { bypassArmor: true });
         events.push({ type: 'land', heavy: true });
       }
       this.fallDistance = 0;
@@ -254,19 +320,29 @@ export class Player {
     // Hazards: lava, cactus, drowning.
     this.hazardTimer -= dt;
     if (this.hazardTimer <= 0) {
+      const below = world.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] - 0.2), Math.floor(this.pos[2]));
       if (this.inLava) { this.damage(4, events, creative); this.hazardTimer = 0.5; }
       else if (this.touching(world, 0.05).has(B.CACTUS)) { this.damage(1, events, creative); this.hazardTimer = 0.5; }
+      else if (this.onGround && BLOCKS[below].hot && !this.sneaking) { this.damage(1, events, creative); this.hazardTimer = 0.5; }
     }
     if (this.headInWater && !creative) {
       this.air -= dt;
       if (this.air <= 0) {
         this.air = 0;
         this.drownTimer -= dt;
-        if (this.drownTimer <= 0) { this.damage(2, events, creative); this.drownTimer = 1; }
+        if (this.drownTimer <= 0) { this.damage(2, events, creative, { bypassArmor: true }); this.drownTimer = 1; }
       }
     } else {
       this.air = Math.min(MAX_AIR, this.air + dt * 5);
       this.drownTimer = 0;
+    }
+
+    // Golden apple effects.
+    if (this.absorbTime > 0 && (this.absorbTime -= dt) <= 0) this.absorption = 0;
+    if (this.regenTime > 0) {
+      this.regenTime -= dt;
+      this.regenTick += dt;
+      if (this.regenTick >= 1.25) { this.regenTick = 0; this.health = Math.min(MAX_HEALTH, this.health + 1); }
     }
 
     // Hunger: a full belly heals, an empty one hurts.
@@ -284,7 +360,7 @@ export class Player {
         this.starveTimer += dt;
         if (this.starveTimer >= 4) {
           this.starveTimer = 0;
-          if (this.health > 1) this.damage(1, events, creative);
+          if (this.health > 1) this.damage(1, events, creative, { bypassArmor: true });
         }
       } else this.starveTimer = 0;
     }
@@ -301,6 +377,7 @@ export class Player {
       saturation: this.saturation,
       flying: this.flying,
       spawn: this.spawn,
+      xp: [this.xpLevel, this.xpProgress, this.xpTotal],
     };
   }
 
@@ -314,6 +391,11 @@ export class Player {
     this.hunger = Math.max(0, Math.min(MAX_HUNGER, Number.isFinite(data.hunger) ? data.hunger : MAX_HUNGER));
     this.saturation = Math.max(0, Math.min(this.hunger, Number(data.saturation) || 0));
     this.flying = !!data.flying;
+    if (Array.isArray(data.xp)) {
+      this.xpLevel = Math.max(0, data.xp[0] | 0);
+      this.xpProgress = Math.max(0, Math.min(0.999, Number(data.xp[1]) || 0));
+      this.xpTotal = Math.max(0, data.xp[2] | 0);
+    }
   }
 }
 
