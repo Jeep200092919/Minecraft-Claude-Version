@@ -5,16 +5,20 @@
 //   uint8  u, v         texture coords in 1/16 units
 //   uint8  layer        texture array layer
 //   uint8  sky, block   light levels * 16 (0..240)
-//   uint8  shade        ambient occlusion * face shading (0..255)
-//   uint8  flags        1 = liquid surface wave, 2 = foliage sway
-//   uint8  pad[3]
+//   uint8  ao           ambient occlusion (0..255)
+//   uint8  flags        FLAG_* bits (waves, sway, leaves, emissive)
+//   uint8  normal       face index 0-5, 6 = plant (lit as if facing up)
+//   uint8  temp, humid  biome climate for grass/foliage tinting
 import { CHUNK_SIZE, CHUNK_HEIGHT } from './constants.js';
 import { B, BLOCKS, IS_OPAQUE } from './blocks.js';
 import { generateTextures } from './textures.js';
 
 export const VERTEX_BYTES = 16;
-export const FLAG_WAVE = 1;
-export const FLAG_SWAY = 2;
+export const FLAG_WAVE = 1; // liquid surface (top vertices)
+export const FLAG_SWAY = 2; // plants (top vertices)
+export const FLAG_LEAVES = 4; // leaves rustle (all vertices)
+export const FLAG_EMISSIVE = 8; // bright pixels glow (torches, lava...)
+export const NORMAL_PLANT = 6;
 
 const PW = CHUNK_SIZE + 2; // padded width
 const PH = CHUNK_HEIGHT + 2; // padded height
@@ -26,12 +30,12 @@ const pdelta = (dx, dy, dz) => dx + dz * PW + dy * PLANE;
 // Faces: normal, U and V axes (cross(U, V) = normal so quads wind CCW when
 // seen from outside), and the base corner of the unit cube.
 const FACES = [
-  { n: [1, 0, 0], u: [0, 0, -1], v: [0, 1, 0], base: [1, 0, 1], shade: 0.6 },
-  { n: [-1, 0, 0], u: [0, 0, 1], v: [0, 1, 0], base: [0, 0, 0], shade: 0.6 },
-  { n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, -1], base: [0, 1, 1], shade: 1.0 },
-  { n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1], base: [0, 0, 0], shade: 0.5 },
-  { n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0], base: [0, 0, 1], shade: 0.8 },
-  { n: [0, 0, -1], u: [-1, 0, 0], v: [0, 1, 0], base: [1, 0, 0], shade: 0.8 },
+  { n: [1, 0, 0], u: [0, 0, -1], v: [0, 1, 0], base: [1, 0, 1] },
+  { n: [-1, 0, 0], u: [0, 0, 1], v: [0, 1, 0], base: [0, 0, 0] },
+  { n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, -1], base: [0, 1, 1] },
+  { n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1], base: [0, 0, 0] },
+  { n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0], base: [0, 0, 1] },
+  { n: [0, 0, -1], u: [-1, 0, 0], v: [0, 1, 0], base: [1, 0, 0] },
 ];
 const CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
 const AO_CURVE = [0.42, 0.6, 0.8, 1.0];
@@ -46,6 +50,13 @@ for (const f of FACES) {
     f.base[1] + f.u[1] * cu + f.v[1] * cv,
     f.base[2] + f.u[2] * cu + f.v[2] * cv,
   ]);
+}
+
+// Per-block vertex flags applied to every vertex.
+const BLOCK_FLAGS = new Uint8Array(256);
+for (let id = 0; id < 256; id++) {
+  const b = BLOCKS[id];
+  BLOCK_FLAGS[id] = (b.waving ? FLAG_LEAVES : 0) | (b.emissive ? FLAG_EMISSIVE : 0);
 }
 
 let faceLayers = null;
@@ -81,6 +92,8 @@ export class MeshBuilder {
   constructor(initialVerts = 4096) {
     this._alloc(initialVerts);
     this.count = 0;
+    this.temp = 128; // climate written into every vertex
+    this.humid = 128;
   }
   _alloc(verts) {
     const buf = new ArrayBuffer(verts * VERTEX_BYTES);
@@ -92,7 +105,7 @@ export class MeshBuilder {
   reset() {
     this.count = 0;
   }
-  vertex(x, y, z, u, v, layer, sky, blk, shade, flags) {
+  vertex(x, y, z, u, v, layer, sky, blk, ao, flags, normal) {
     if (this.count >= this.capacity) this._alloc(this.capacity * 2);
     const i = this.count++;
     const s = i * 8;
@@ -100,13 +113,17 @@ export class MeshBuilder {
     this.i16[s + 1] = y;
     this.i16[s + 2] = z;
     const b = i * VERTEX_BYTES;
-    this.u8[b + 6] = u;
-    this.u8[b + 7] = v;
-    this.u8[b + 8] = layer;
-    this.u8[b + 9] = sky;
-    this.u8[b + 10] = blk;
-    this.u8[b + 11] = shade;
-    this.u8[b + 12] = flags;
+    const u8 = this.u8;
+    u8[b + 6] = u;
+    u8[b + 7] = v;
+    u8[b + 8] = layer;
+    u8[b + 9] = sky;
+    u8[b + 10] = blk;
+    u8[b + 11] = ao;
+    u8[b + 12] = flags;
+    u8[b + 13] = normal;
+    u8[b + 14] = this.temp;
+    u8[b + 15] = this.humid;
   }
   get quads() {
     return this.count >> 2;
@@ -162,7 +179,8 @@ const SKYV = new Int32Array(4);
 const BLKV = new Int32Array(4);
 
 // Emits one full cube face with smooth lighting and ambient occlusion.
-function emitCubeFace(mb, f, x, y, z, pc, layer, topHeight = 16, flags = 0) {
+// `topFlags` apply to the upper vertices only, `allFlags` to every vertex.
+function emitCubeFace(mb, f, x, y, z, pc, layer, topHeight = 16, topFlags = 0, allFlags = 0) {
   const face = FACES[f];
   const front = pc + face.delta;
   const ao = AO, sky = SKYV, blk = BLKV;
@@ -193,15 +211,16 @@ function emitCubeFace(mb, f, x, y, z, pc, layer, topHeight = 16, flags = 0) {
       (x + p[0]) * 16, y * 16 + py, (z + p[2]) * 16,
       cu * 16, (1 - cv) * 16,
       layer, sky[c], blk[c],
-      Math.round(face.shade * AO_CURVE[ao[c]] * 255),
-      p[1] && flags ? flags : 0,
+      Math.round(AO_CURVE[ao[c]] * 255),
+      (p[1] ? topFlags : 0) | allFlags,
+      f,
     );
   }
 }
 
 // Emits the faces of an arbitrary box (in 1/16 units) with flat lighting.
 // `transform` optionally remaps vertex positions (used for wall torches).
-function emitBox(mb, x, y, z, box, layers, sky, blk, faceMask = 63, transform = null, uvOverride = null) {
+function emitBox(mb, x, y, z, box, layers, sky, blk, faceMask = 63, transform = null, uvOverride = null, flags = 0) {
   const [x0, y0, z0, x1, y1, z1] = box;
   for (let f = 0; f < 6; f++) {
     if (!(faceMask & (1 << f))) continue;
@@ -215,7 +234,7 @@ function emitBox(mb, x, y, z, box, layers, sky, blk, faceMask = 63, transform = 
       let u = du, v = 16 - dv;
       if (uvOverride && uvOverride[f]) [u, v] = uvOverride[f](u, v);
       if (transform) [px, py, pz] = transform(px, py, pz);
-      mb.vertex(x * 16 + px, y * 16 + py, z * 16 + pz, u, v, layers[f], sky, blk, Math.round(face.shade * 255), 0);
+      mb.vertex(x * 16 + px, y * 16 + py, z * 16 + pz, u, v, layers[f], sky, blk, 255, flags, f);
     }
   }
 }
@@ -234,7 +253,7 @@ function emitCross(mb, x, y, z, layer, light, sway) {
     for (const order of [[0, 1, 2, 3], [1, 0, 3, 2]]) {
       for (const i of order) {
         const q = quad[i];
-        mb.vertex(X + q[0], Y + q[1], Z + q[2], q[3], q[4], layer, sky, blk, 235, q[1] && sway ? FLAG_SWAY : 0);
+        mb.vertex(X + q[0], Y + q[1], Z + q[2], q[3], q[4], layer, sky, blk, 255, q[1] && sway ? FLAG_SWAY : 0, NORMAL_PLANT);
       }
     }
   }
@@ -268,11 +287,15 @@ export function buildChunkMesh(world, chunk) {
         if (id === B.AIR) continue;
         const block = BLOCKS[id];
         const layerBase = id * 6;
+        const ci = ((z << 4) | x) * 2;
+        solid.temp = liquid.temp = chunk.climate[ci];
+        solid.humid = liquid.humid = chunk.climate[ci + 1];
+        const allFlags = BLOCK_FLAGS[id];
         switch (block.shape) {
           case 'cube': {
             for (let f = 0; f < 6; f++) {
               const nid = padBlocks[pc + FACES[f].delta];
-              if (shouldDrawFace(id, nid)) emitCubeFace(solid, f, x, y, z, pc, faceLayers[layerBase + f]);
+              if (shouldDrawFace(id, nid)) emitCubeFace(solid, f, x, y, z, pc, faceLayers[layerBase + f], 16, 0, allFlags);
             }
             break;
           }
@@ -284,7 +307,7 @@ export function buildChunkMesh(world, chunk) {
               const nid = padBlocks[pc + FACES[f].delta];
               if (nid === id || IS_OPAQUE[nid]) continue;
               if (f === 2 && aboveSame) continue;
-              emitCubeFace(mb, f, x, y, z, pc, faceLayers[layerBase + f], top, aboveSame ? 0 : FLAG_WAVE);
+              emitCubeFace(mb, f, x, y, z, pc, faceLayers[layerBase + f], top, aboveSame ? 0 : FLAG_WAVE, allFlags);
             }
             break;
           }
@@ -296,7 +319,7 @@ export function buildChunkMesh(world, chunk) {
           case 'torch': {
             const l = padLight[pc];
             const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
-            emitBox(solid, x, y, z, TORCH_BOX, layers, (l >> 4) * 16, (l & 15) * 16, 63 & ~(1 << 3), WALL_TORCH_TRANSFORMS[id] || null, TORCH_UV);
+            emitBox(solid, x, y, z, TORCH_BOX, layers, (l >> 4) * 16, (l & 15) * 16, 63 & ~(1 << 3), WALL_TORCH_TRANSFORMS[id] || null, TORCH_UV, allFlags);
             break;
           }
           case 'cactus': {
@@ -350,10 +373,10 @@ export function buildOverlayCube(layer, box = [0, 0, 0, 16, 16, 16]) {
 export function buildSpriteMesh(layer) {
   const mb = new MeshBuilder(8);
   const quad = [[0, 0, 0, 16], [16, 0, 16, 16], [16, 16, 16, 0], [0, 16, 0, 0]];
-  for (const order of [[0, 1, 2, 3], [1, 0, 3, 2]]) {
+  for (const [order, normal] of [[[0, 1, 2, 3], 4], [[1, 0, 3, 2], 5]]) {
     for (const i of order) {
       const q = quad[i];
-      mb.vertex(q[0], q[1], 8, q[2], q[3], layer, 240, 0, 255, 0);
+      mb.vertex(q[0], q[1], 8, q[2], q[3], layer, 240, 0, 255, 0, normal);
     }
   }
   return { data: mb.result(), quads: mb.quads };

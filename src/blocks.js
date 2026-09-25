@@ -106,6 +106,8 @@ const DEFAULT_BLOCK = {
   creative: true, // listed in the creative palette
   targetable: true,
   selectionBox: null, // [minX,minY,minZ,maxX,maxY,maxZ] for non-cube shapes
+  emissive: false, // bright pixels glow with shaders on
+  waving: false, // rustles in the wind with shaders on
 };
 
 export const BLOCKS = [];
@@ -125,8 +127,8 @@ function def(id, name, displayName, tex, opts = {}) {
 }
 
 const plant = { shape: 'cross', solid: false, opaque: false, hardness: 0, sound: 'grass', support: 'ground', selectionBox: [0.2, 0, 0.2, 0.8, 0.8, 0.8] };
-const torch = { shape: 'torch', solid: false, opaque: false, hardness: 0, sound: 'wood', lightEmit: 14, support: 'torch', drop: B.TORCH };
-const leaves = { opaque: false, hardness: 0.2, sound: 'grass', lightOpacity: 1, tool: 'axe', drop: I.STICK, dropChance: 0.06 };
+const torch = { shape: 'torch', solid: false, opaque: false, hardness: 0, sound: 'wood', lightEmit: 14, support: 'torch', drop: B.TORCH, emissive: true };
+const leaves = { opaque: false, hardness: 0.2, sound: 'grass', lightOpacity: 1, tool: 'axe', drop: I.STICK, dropChance: 0.06, waving: true };
 const wool = { hardness: 0.8, sound: 'wool' };
 const metal = { hardness: 5, tool: 'pickaxe', harvestTier: 1, sound: 'stone' };
 
@@ -148,7 +150,7 @@ def(B.WATER, 'water', 'Water', 'water', {
 });
 def(B.LAVA, 'lava', 'Lava', 'lava', {
   shape: 'liquid', solid: false, opaque: false, liquid: true, hardness: -1, lightEmit: 15,
-  replaceable: true, targetable: false, creative: false,
+  replaceable: true, targetable: false, creative: false, emissive: true,
 });
 def(B.COAL_ORE, 'coal_ore', 'Coal Ore', 'coal_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 1, drop: I.COAL });
 def(B.IRON_ORE, 'iron_ore', 'Iron Ore', 'iron_ore', { hardness: 3, tool: 'pickaxe', harvestTier: 2 });
@@ -178,7 +180,7 @@ BLOCKS[B.TORCH].attach = [0, -1, 0];
 def(B.CRAFTING_TABLE, 'crafting_table', 'Crafting Table', { top: 'crafting_table_top', bottom: 'planks', side: 'crafting_table_side', pz: 'crafting_table_front', nz: 'crafting_table_front' }, { hardness: 2.5, tool: 'axe', sound: 'wood' });
 def(B.BRICKS, 'bricks', 'Bricks', 'bricks', { hardness: 2, tool: 'pickaxe', harvestTier: 1 });
 def(B.BOOKSHELF, 'bookshelf', 'Bookshelf', { top: 'planks', side: 'bookshelf' }, { hardness: 1.5, tool: 'axe', sound: 'wood' });
-def(B.GLOWSTONE, 'glowstone', 'Glowstone', 'glowstone', { hardness: 0.3, sound: 'glass', lightEmit: 15 });
+def(B.GLOWSTONE, 'glowstone', 'Glowstone', 'glowstone', { hardness: 0.3, sound: 'glass', lightEmit: 15, emissive: true });
 def(B.STONE_BRICKS, 'stone_bricks', 'Stone Bricks', 'stone_bricks', { hardness: 1.5, tool: 'pickaxe', harvestTier: 1 });
 def(B.WHITE_WOOL, 'white_wool', 'White Wool', 'white_wool', wool);
 def(B.RED_WOOL, 'red_wool', 'Red Wool', 'red_wool', wool);
@@ -195,6 +197,9 @@ def(B.OBSIDIAN, 'obsidian', 'Obsidian', 'obsidian', { hardness: 50, tool: 'picka
 // Fill any unused ids with inert air-like entries so lookups never fail.
 for (let i = 0; i < 256; i++) {
   if (!BLOCKS[i]) BLOCKS[i] = { ...BLOCKS[B.AIR], id: i, name: `unused_${i}` };
+  const b = BLOCKS[i];
+  // Held in first person as a 3D block (true) or as a flat sprite (false).
+  if (b.heldAsBlock === undefined) b.heldAsBlock = b.shape === 'cube' || b.shape === 'cactus';
 }
 
 // Fast per-id lookup tables used in hot loops (meshing, lighting, physics).

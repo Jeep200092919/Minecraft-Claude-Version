@@ -184,10 +184,12 @@ export class UI {
     };
     toggle('opt-bob', 'viewBobbing', 'View Bobbing');
     toggle('opt-invert', 'invertMouse', 'Invert Mouse');
+    toggle('opt-shaders', 'shaders', 'Shaders');
+    toggle('opt-shadows', 'shadows', 'Shadows');
   }
 
   showOptions() {
-    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'viewBobbing', 'invertMouse']) this[`refresh_${k}`]();
+    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'viewBobbing', 'invertMouse', 'shaders', 'shadows']) this[`refresh_${k}`]();
     this.show('options');
   }
 

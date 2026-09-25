@@ -23,6 +23,8 @@ export const DEFAULT_SETTINGS = {
   volume: 60,
   viewBobbing: true,
   invertMouse: false,
+  shaders: true,
+  shadows: true,
 };
 
 const CREATIVE_HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.COBBLESTONE, B.PLANKS, B.LOG, B.GLASS, B.TORCH, B.BRICKS];
@@ -100,7 +102,11 @@ export class Game {
   // --- Settings -------------------------------------------------------------------
 
   applySettings() {
-    this.sound.setVolume(this.settings.volume / 100);
+    const s = this.settings;
+    this.sound.setVolume(s.volume / 100);
+    this.renderer.fancy = !!s.shaders;
+    this.renderer.shadowsEnabled = !!s.shadows;
+    this.renderer.shadowDistance = Math.min(96, Math.max(48, s.renderDistance * 16));
   }
 
   saveSettings() {

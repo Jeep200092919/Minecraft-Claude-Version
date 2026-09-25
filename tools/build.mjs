@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 const IMPORT_RE = /^\s*import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]\s*;?/gm;
+const NAMESPACE_IMPORT_RE = /^\s*import\s*\*\s*as\s+([\w$]+)\s+from\s*['"]([^'"]+)['"]\s*;?/gm;
 const SIDE_EFFECT_IMPORT_RE = /^\s*import\s+['"]([^'"]+)['"]\s*;?/gm;
 const EXPORT_RE = /^export\s+(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/gm;
 
@@ -43,6 +44,12 @@ export async function bundle(entry) {
       importLines.push({ dep, bindings });
       return '';
     });
+    body = body.replace(NAMESPACE_IMPORT_RE, (_, name, spec) => {
+      const dep = resolve(dirname(file), spec);
+      deps.push(dep);
+      importLines.push({ dep, namespace: name });
+      return '';
+    });
     body = body.replace(SIDE_EFFECT_IMPORT_RE, (_, spec) => {
       deps.push(resolve(dirname(file), spec));
       return '';
@@ -67,7 +74,9 @@ export async function bundle(entry) {
   for (const file of order) {
     const mod = modules.get(file);
     const imports = mod.importLines
-      .map(({ dep, bindings }) => `const { ${bindings.join(', ')} } = ${modules.get(dep).id};`)
+      .map(({ dep, bindings, namespace }) => (namespace
+        ? `const ${namespace} = ${modules.get(dep).id};`
+        : `const { ${bindings.join(', ')} } = ${modules.get(dep).id};`))
       .join('\n');
     out += `// ---- ${relative(ROOT, file)} ----\n`;
     out += `const ${mod.id} = (() => {\n${imports}\n${mod.body}\nreturn { ${mod.exported.join(', ')} };\n})();\n`;

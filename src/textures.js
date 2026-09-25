@@ -83,13 +83,18 @@ function dirt(t, rng) {
   });
 }
 
-const GRASS_GREENS = [[92, 154, 54], [104, 168, 62], [80, 138, 46], [114, 176, 70]];
+// Grass and foliage are stored in grayscale and coloured per biome by the
+// shader (like Minecraft's colormaps). The alpha channel marks which pixels
+// get tinted: TINT_GRASS or TINT_FOLIAGE; 255 = no tint, 0 = transparent.
+export const TINT_GRASS = 250;
+export const TINT_FOLIAGE = 245;
+const GRASS_GRAYS = [[176, 176, 176], [192, 192, 192], [158, 158, 158], [206, 206, 206]];
 
 function grassTop(t, rng) {
   const vn = valueNoise(rng, 4);
   t.fill((x, y) => {
-    const c = GRASS_GREENS[Math.floor(rng() * GRASS_GREENS.length)];
-    t.set(x, y, add(c, (vn(x, y) - 0.5) * 18));
+    const c = GRASS_GRAYS[Math.floor(rng() * GRASS_GRAYS.length)];
+    t.set(x, y, add(c, (vn(x, y) - 0.5) * 22), TINT_GRASS);
   });
 }
 
@@ -99,12 +104,12 @@ function grassSide(t, rng, overlay = 'grass') {
     const depth = 3 + Math.floor(rng() * 2) + (rng() < 0.3 ? 1 : 0);
     for (let y = 0; y < depth; y++) {
       if (overlay === 'grass') {
-        t.set(x, y, GRASS_GREENS[Math.floor(rng() * GRASS_GREENS.length)]);
+        t.set(x, y, GRASS_GRAYS[Math.floor(rng() * GRASS_GRAYS.length)], TINT_GRASS);
       } else {
         t.set(x, y, add([240, 246, 250], (rng() - 0.5) * 10));
       }
     }
-    if (overlay === 'grass' && rng() < 0.4) t.set(x, depth, [70, 120, 40]);
+    if (overlay === 'grass' && rng() < 0.4) t.set(x, depth, [120, 120, 120], TINT_GRASS);
   }
 }
 
@@ -173,12 +178,12 @@ function birchBark(t, rng) {
   for (let i = 0; i < 5; i++) t.set(Math.floor(rng() * 16), Math.floor(rng() * 16), [140, 138, 130]);
 }
 
-function leaves(t, rng, base, holes = 0.2) {
+function leaves(t, rng, base, holes = 0.2, alpha = 255) {
   const vn = valueNoise(rng, 4);
   t.fill((x, y) => {
     const f = 0.72 + vn(x, y) * 0.4 + (rng() - 0.5) * 0.18;
     if (rng() < holes) t.set(x, y, base, 0);
-    else t.set(x, y, scale(base, f));
+    else t.set(x, y, scale(base, f), alpha);
   });
 }
 
@@ -281,10 +286,10 @@ function tallGrass(t, rng) {
     const x0 = 1 + Math.floor(rng() * 14);
     const h = 5 + Math.floor(rng() * 10);
     const lean = (rng() - 0.5) * 3;
-    const c = GRASS_GREENS[Math.floor(rng() * GRASS_GREENS.length)];
+    const c = GRASS_GRAYS[Math.floor(rng() * GRASS_GRAYS.length)];
     for (let k = 0; k < h; k++) {
       const x = Math.round(x0 + (lean * k) / h);
-      t.set(x, 15 - k, scale(c, 0.8 + (k / h) * 0.3));
+      t.set(x, 15 - k, scale(c, 0.8 + (k / h) * 0.3), TINT_GRASS);
     }
   }
 }
@@ -579,7 +584,7 @@ const GENERATORS = {
   birch_log_top: (t, r) => logTop(t, r, [200, 182, 128], [182, 162, 110], [214, 212, 204]),
   spruce_log_side: (t, r) => bark(t, r, [62, 44, 26], 16),
   spruce_log_top: (t, r) => logTop(t, r, [118, 88, 52], [100, 74, 42], [62, 44, 26]),
-  leaves: (t, r) => leaves(t, r, [58, 124, 36]),
+  leaves: (t, r) => leaves(t, r, [168, 168, 168], 0.2, TINT_FOLIAGE),
   birch_leaves: (t, r) => leaves(t, r, [100, 146, 58]),
   spruce_leaves: (t, r) => leaves(t, r, [46, 90, 54], 0.14),
   sandstone_side: sandstoneSide,

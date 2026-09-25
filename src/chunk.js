@@ -21,6 +21,9 @@ export class Chunk {
     this.light = new Uint8Array(CHUNK_VOLUME);
     // Height of the highest non-air block + 1, per column (0 = empty column).
     this.heightmap = new Uint8Array(CHUNK_AREA);
+    // Biome climate per column (temperature, humidity as 0..255), used to
+    // tint grass and leaves.
+    this.climate = new Uint8Array(CHUNK_AREA * 2).fill(128);
     this.state = CHUNK_STATE.EMPTY;
     this.dirty = true; // mesh needs rebuilding
     this.mesh = null; // GPU buffers, owned by the renderer

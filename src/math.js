@@ -139,3 +139,40 @@ export function compose(...ms) {
   for (const m of ms) multiply(out, out, m);
   return out;
 }
+
+export function ortho(out, l, r, b, t, n, f) {
+  out.fill(0);
+  out[0] = 2 / (r - l);
+  out[5] = 2 / (t - b);
+  out[10] = -2 / (f - n);
+  out[12] = -(r + l) / (r - l);
+  out[13] = -(t + b) / (t - b);
+  out[14] = -(f + n) / (f - n);
+  out[15] = 1;
+  return out;
+}
+
+// Rotation-only view matrix looking along `dir` (like viewRotation, but from
+// an arbitrary direction and up vector).
+export function lookRotation(out, dir, up) {
+  const fl = Math.hypot(dir[0], dir[1], dir[2]);
+  const f = [dir[0] / fl, dir[1] / fl, dir[2] / fl];
+  let r = [f[1] * up[2] - f[2] * up[1], f[2] * up[0] - f[0] * up[2], f[0] * up[1] - f[1] * up[0]];
+  const rl = Math.hypot(r[0], r[1], r[2]) || 1;
+  r = [r[0] / rl, r[1] / rl, r[2] / rl];
+  const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+  out.fill(0);
+  out[0] = r[0]; out[4] = r[1]; out[8] = r[2];
+  out[1] = u[0]; out[5] = u[1]; out[9] = u[2];
+  out[2] = -f[0]; out[6] = -f[1]; out[10] = -f[2];
+  out[15] = 1;
+  return out;
+}
+
+export function transformPoint(m, p) {
+  return [
+    m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12],
+    m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
+    m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14],
+  ];
+}

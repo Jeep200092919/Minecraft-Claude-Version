@@ -1,7 +1,10 @@
 // Inventory icons rendered at runtime from the procedural textures:
 // isometric cubes for blocks, flat sprites for plants/items, plus HUD hearts.
 import { BLOCKS, ITEMS, isBlockItem, FACE_PX, FACE_PY, FACE_PZ } from './blocks.js';
-import { generateTextures, tilePixels, TILE } from './textures.js';
+import { generateTextures, tilePixels, TILE, TINT_GRASS, TINT_FOLIAGE } from './textures.js';
+
+const GRASS_TINT = [0.56, 0.74, 0.35];
+const FOLIAGE_TINT = [0.45, 0.66, 0.19];
 
 const cache = new Map();
 
@@ -13,10 +16,13 @@ function tileCanvas(name, shade = 1) {
   const ctx = c.getContext('2d');
   const img = ctx.createImageData(TILE, TILE);
   for (let i = 0; i < px.length; i += 4) {
-    img.data[i] = px[i] * shade;
-    img.data[i + 1] = px[i + 1] * shade;
-    img.data[i + 2] = px[i + 2] * shade;
-    img.data[i + 3] = px[i + 3];
+    const a = px[i + 3];
+    // Grass/foliage pixels are grayscale; tint them like a plains biome.
+    const tint = a === TINT_GRASS ? GRASS_TINT : a === TINT_FOLIAGE ? FOLIAGE_TINT : null;
+    img.data[i] = px[i] * shade * (tint ? tint[0] : 1);
+    img.data[i + 1] = px[i + 1] * shade * (tint ? tint[1] : 1);
+    img.data[i + 2] = px[i + 2] * shade * (tint ? tint[2] : 1);
+    img.data[i + 3] = tint ? 255 : a;
   }
   ctx.putImageData(img, 0, 0);
   return c;

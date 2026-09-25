@@ -113,6 +113,10 @@ export class WorldGenerator {
     }
 
     const cave = this.caveField(ox, oz);
+    for (let i = 0; i < cols.length; i++) {
+      chunk.climate[i * 2] = Math.max(0, Math.min(255, Math.round((cols[i].temp + 1) * 127.5)));
+      chunk.climate[i * 2 + 1] = Math.max(0, Math.min(255, Math.round((cols[i].humid + 1) * 127.5)));
+    }
 
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let x = 0; x < CHUNK_SIZE; x++) {
