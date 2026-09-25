@@ -109,11 +109,12 @@ html, body {
   margin-bottom: 3px;
   min-height: 18px;
 }
-#hearts, #bubbles { display: flex; gap: 0; }
-#bubbles { flex-direction: row-reverse; }
-#hearts img, #bubbles img { width: 18px; height: 16px; margin-right: -2px; image-rendering: pixelated; }
-#bubbles img { height: 18px; }
-#hearts.shake img:nth-child(odd) { transform: translateY(-2px); }
+#hearts, #bubbles, #hunger { display: flex; gap: 0; }
+#bubbles, #hunger { flex-direction: row-reverse; }
+.bars-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+#hearts img, #bubbles img, #hunger img { width: 18px; height: 16px; margin-right: -2px; image-rendering: pixelated; }
+#bubbles img, #hunger img { height: 18px; }
+#hearts.shake img:nth-child(odd), #hunger.shake img:nth-child(even) { transform: translateY(-2px); }
 
 #hotbar {
   display: flex;
@@ -328,6 +329,12 @@ input:not([type]):focus { border-color: #fff; }
 .crafting { display: flex; align-items: center; gap: 14px; margin: 4px 0 10px; }
 .craft-grid { display: grid; gap: 0; }
 .arrow { font-size: 30px; color: #8b8b8b; }
+.furnace { justify-content: center; gap: 22px; }
+.furnace-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.flame { width: 26px; height: 26px; position: relative; background: #555; clip-path: polygon(50% 0, 80% 35%, 95% 70%, 75% 100%, 25% 100%, 5% 70%, 20% 35%); }
+#furnace-flame { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(#ffe36b, #ff7a1a 60%, #d42a00); }
+.progress { width: 44px; height: 22px; position: relative; background: #8b8b8b; clip-path: polygon(0 30%, 60% 30%, 60% 0, 100% 50%, 60% 100%, 60% 70%, 0 70%); }
+#furnace-progress { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #fff; }
 .palette {
   max-height: 216px;
   overflow-y: auto;

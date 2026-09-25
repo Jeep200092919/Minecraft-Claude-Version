@@ -49,7 +49,12 @@ test('crafting recipes match shaped, mirrored and shapeless patterns', () => {
   assert.deepEqual(matchRecipe([C, C, 0, C, S, 0, 0, S, 0], 3), { id: I.STONE_AXE, count: 1 });
   assert.deepEqual(matchRecipe([0, C, C, 0, S, C, 0, S, 0], 3), { id: I.STONE_AXE, count: 1 }, 'mirrored axe');
   assert.deepEqual(matchRecipe([0, I.IRON_INGOT, 0, 0, S, 0, 0, S, 0], 3), { id: I.IRON_SHOVEL, count: 1 });
-  assert.deepEqual(matchRecipe([I.COAL, B.IRON_ORE, 0, 0], 2), { id: I.IRON_INGOT, count: 1 }, 'smelting');
+  assert.equal(matchRecipe([I.COAL, B.IRON_ORE, 0, 0], 2), null, 'ores are smelted in a furnace, not crafted');
+  const Cb = B.COBBLESTONE;
+  assert.deepEqual(matchRecipe([Cb, Cb, Cb, Cb, 0, Cb, Cb, Cb, Cb], 3), { id: B.FURNACE, count: 1 });
+  assert.deepEqual(matchRecipe([P, P, P, P, 0, P, P, P, P], 3), { id: B.CHEST, count: 1 });
+  assert.deepEqual(matchRecipe([0, I.DIAMOND, 0, 0, I.DIAMOND, 0, 0, S, 0], 3), { id: I.DIAMOND_SWORD, count: 1 });
+  assert.deepEqual(matchRecipe([I.WHEAT, I.WHEAT, I.WHEAT, 0, 0, 0, 0, 0, 0], 3), { id: I.BREAD, count: 1 });
   assert.equal(matchRecipe([P, P, P, 0, S, 0, 0, S, 0].slice(0, 4), 2), null);
   assert.equal(matchRecipe([B.DIRT, 0, 0, 0], 2), null);
   assert.equal(matchRecipe([0, 0, 0, 0], 2), null);

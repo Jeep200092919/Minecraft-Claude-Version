@@ -1,13 +1,13 @@
 // First-person player: movement, AABB collision, swimming, flying, health.
 import { B, BLOCKS, IS_SOLID } from './blocks.js';
 import { CHUNK_HEIGHT } from './constants.js';
+import { moveBody } from './physics.js';
 
 export const PLAYER_WIDTH = 0.6;
 export const PLAYER_HEIGHT = 1.8;
 const HALF_W = PLAYER_WIDTH / 2;
 const EYE = 1.62;
 const SNEAK_EYE = 1.32;
-const EPS = 1e-4;
 
 const GRAVITY = 32;
 const JUMP_VELOCITY = 9;
@@ -20,6 +20,7 @@ const FLY_SPRINT_SPEED = 21.6;
 const SWIM_SPEED = 2.2;
 export const MAX_HEALTH = 20;
 export const MAX_AIR = 15; // seconds of breath
+export const MAX_HUNGER = 20;
 
 export class Player {
   constructor() {
@@ -49,6 +50,35 @@ export class Player {
     this.dead = false;
     this.eyeHeight = EYE;
     this.spawn = [0.5, 80, 0.5];
+    this.hunger = MAX_HUNGER;
+    this.saturation = 5;
+    this.exhaustion = 0;
+    this.starveTimer = 0;
+    // Collision body used by physics.js.
+    this.hw = HALF_W;
+    this.h = PLAYER_HEIGHT;
+  }
+
+  addExhaustion(amount, creative) {
+    if (creative) return;
+    this.exhaustion += amount;
+    while (this.exhaustion >= 4) {
+      this.exhaustion -= 4;
+      if (this.saturation > 0) this.saturation = Math.max(0, this.saturation - 1);
+      else this.hunger = Math.max(0, this.hunger - 1);
+    }
+  }
+
+  eat(food) {
+    this.hunger = Math.min(MAX_HUNGER, this.hunger + food.hunger);
+    this.saturation = Math.min(this.hunger, this.saturation + food.saturation);
+  }
+
+  knockback(dx, dz, strength) {
+    const l = Math.hypot(dx, dz) || 1;
+    this.vel[0] += (dx / l) * strength;
+    this.vel[2] += (dz / l) * strength;
+    this.vel[1] = Math.max(this.vel[1], 5);
   }
 
   eye() {
@@ -79,6 +109,7 @@ export class Player {
 
   damage(amount, events, creative) {
     if (creative || this.dead || amount <= 0) return;
+    this.addExhaustion(0.1, creative);
     this.health = Math.max(0, this.health - amount);
     this.hurtTime = 0.4;
     this.sinceDamage = 0;
@@ -93,47 +124,13 @@ export class Player {
     this.pos = [...this.spawn];
     this.vel = [0, 0, 0];
     this.health = MAX_HEALTH;
+    this.hunger = MAX_HUNGER;
+    this.saturation = 5;
+    this.exhaustion = 0;
     this.air = MAX_AIR;
     this.fallDistance = 0;
     this.dead = false;
     this.flying = false;
-  }
-
-  // Moves along one axis, stopping at solid blocks. Returns true on collision.
-  moveAxis(world, axis, d) {
-    if (d === 0) return false;
-    this.pos[axis] += d;
-    const b = this.aabb();
-    const x0 = Math.floor(b[0]), x1 = Math.floor(b[3] - 1e-7);
-    const y0 = Math.floor(b[1]), y1 = Math.floor(b[4] - 1e-7);
-    const z0 = Math.floor(b[2]), z1 = Math.floor(b[5] - 1e-7);
-    let limit = d > 0 ? Infinity : -Infinity;
-    for (let y = y0; y <= y1; y++) {
-      for (let z = z0; z <= z1; z++) {
-        for (let x = x0; x <= x1; x++) {
-          if (!Player.solidAt(world, x, y, z)) continue;
-          const c = axis === 0 ? x : axis === 1 ? y : z;
-          limit = d > 0 ? Math.min(limit, c) : Math.max(limit, c + 1);
-        }
-      }
-    }
-    if (limit === Infinity || limit === -Infinity) return false;
-    if (axis === 1) this.pos[1] = d > 0 ? limit - PLAYER_HEIGHT - EPS : limit + EPS;
-    else this.pos[axis] = d > 0 ? limit - HALF_W - EPS : limit + HALF_W + EPS;
-    this.vel[axis] = 0;
-    return true;
-  }
-
-  // Sneaking keeps you from walking off edges.
-  hasSupport(world, x, z) {
-    const b = this.aabb([x, this.pos[1], z]);
-    const y = Math.floor(this.pos[1] - 0.1);
-    for (let bz = Math.floor(b[2]); bz <= Math.floor(b[5] - 1e-7); bz++) {
-      for (let bx = Math.floor(b[0]); bx <= Math.floor(b[3] - 1e-7); bx++) {
-        if (Player.solidAt(world, bx, y, bz)) return true;
-      }
-    }
-    return false;
   }
 
   // Blocks overlapping the player's box (optionally grown by `grow`).
@@ -161,8 +158,9 @@ export class Player {
 
     let fwd = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
     let str = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-    if (input.sprint && fwd > 0 && !this.sneaking) this.sprinting = true;
-    if (fwd <= 0 || this.sneaking || (this.collidedH && !this.flying)) this.sprinting = false;
+    const canSprint = creative || this.hunger > 6;
+    if (input.sprint && fwd > 0 && !this.sneaking && canSprint) this.sprinting = true;
+    if (fwd <= 0 || this.sneaking || !canSprint || (this.collidedH && !this.flying)) this.sprinting = false;
 
     const sinY = Math.sin(this.yaw), cosY = Math.cos(this.yaw);
     let wx = -sinY * fwd + cosY * str;
@@ -197,6 +195,7 @@ export class Player {
       this.vel[1] = Math.max(this.vel[1] - GRAVITY * dt, -TERMINAL_VELOCITY);
       if (input.jump && this.onGround) {
         this.vel[1] = JUMP_VELOCITY;
+        this.addExhaustion(this.sprinting ? 0.2 : 0.05, creative);
         if (this.sprinting) {
           this.vel[0] += -sinY * 1.6;
           this.vel[2] += -cosY * 1.6;
@@ -204,26 +203,18 @@ export class Player {
       }
     }
 
-    // Integrate with collision, in small sub-steps so fast falls never tunnel.
-    let dx = this.vel[0] * dt, dy = this.vel[1] * dt, dz = this.vel[2] * dt;
-    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) / 0.35));
-    dx /= steps; dy /= steps; dz /= steps;
+    // Integrate with collision (sub-stepped; steps up slabs and stairs).
     const wasOnGround = this.onGround;
     const startY = this.pos[1];
-    this.onGround = false;
-    this.collidedH = false;
-    for (let s = 0; s < steps; s++) {
-      if (this.moveAxis(world, 1, dy)) {
-        if (dy < 0) this.onGround = true;
-        dy = 0;
-      }
-      if (wasOnGround && this.sneaking && !this.flying) {
-        if (dx && !this.hasSupport(world, this.pos[0] + dx, this.pos[2])) { dx = 0; this.vel[0] = 0; }
-        if (dz && !this.hasSupport(world, this.pos[0], this.pos[2] + dz)) { dz = 0; this.vel[2] = 0; }
-      }
-      if (this.moveAxis(world, 0, dx)) { this.collidedH = true; dx = 0; }
-      if (this.moveAxis(world, 2, dz)) { this.collidedH = true; dz = 0; }
-    }
+    const startX = this.pos[0], startZ = this.pos[2];
+    const res = moveBody(world, this, this.vel[0] * dt, this.vel[1] * dt, this.vel[2] * dt, {
+      stepHeight: this.flying ? 0 : 0.6,
+      sneak: this.sneaking && !this.flying,
+      wasOnGround,
+    });
+    this.onGround = res.onGround;
+    this.collidedH = res.collidedH;
+    if (this.sprinting && this.onGround) this.addExhaustion(Math.hypot(this.pos[0] - startX, this.pos[2] - startZ) * 0.1, creative);
     if (this.onGround && this.flying) this.flying = false;
 
     // Liquids.
@@ -278,10 +269,24 @@ export class Player {
       this.drownTimer = 0;
     }
 
-    // Natural regeneration after a while without damage.
-    if (this.health < MAX_HEALTH && this.sinceDamage > 5) {
-      this.regenTimer += dt;
-      if (this.regenTimer > 2.5) { this.health++; this.regenTimer = 0; }
+    // Hunger: a full belly heals, an empty one hurts.
+    if (!creative) {
+      if (this.health < MAX_HEALTH && this.hunger >= 18) {
+        this.regenTimer += dt;
+        const period = this.hunger >= MAX_HUNGER && this.saturation > 0 ? 1 : 4;
+        if (this.regenTimer >= period) {
+          this.regenTimer = 0;
+          this.health++;
+          this.addExhaustion(6, creative);
+        }
+      } else this.regenTimer = 0;
+      if (this.hunger <= 0) {
+        this.starveTimer += dt;
+        if (this.starveTimer >= 4) {
+          this.starveTimer = 0;
+          if (this.health > 1) this.damage(1, events, creative);
+        }
+      } else this.starveTimer = 0;
     }
   }
 
@@ -292,6 +297,8 @@ export class Player {
       yaw: this.yaw,
       pitch: this.pitch,
       health: this.dead ? MAX_HEALTH : this.health,
+      hunger: this.dead ? MAX_HUNGER : this.hunger,
+      saturation: this.saturation,
       flying: this.flying,
       spawn: this.spawn,
     };
@@ -304,6 +311,8 @@ export class Player {
     this.yaw = Number(data.yaw) || 0;
     this.pitch = Number(data.pitch) || 0;
     this.health = Math.max(1, Math.min(MAX_HEALTH, Number(data.health) || MAX_HEALTH));
+    this.hunger = Math.max(0, Math.min(MAX_HUNGER, Number.isFinite(data.hunger) ? data.hunger : MAX_HUNGER));
+    this.saturation = Math.max(0, Math.min(this.hunger, Number(data.saturation) || 0));
     this.flying = !!data.flying;
   }
 }

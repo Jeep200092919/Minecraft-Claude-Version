@@ -48,7 +48,7 @@ async function main() {
     await page.goto(url);
     await page.waitForSelector('#screen-title.active', { timeout: 15000 });
     await sleep(4000);
-    await page.screenshot({ path: join(OUT, '01-title.png') });
+    await page.screenshot({ path: join(OUT, '01-title.png'), timeout: 120000 });
 
     await page.click('[data-action="singleplayer"]');
     await page.click('[data-action="create-world"]');
@@ -60,7 +60,7 @@ async function main() {
     // Let more chunks stream in.
     await page.evaluate(() => { window.claudecraft.settings.renderDistance = 6; });
     await sleep(8000);
-    await page.screenshot({ path: join(OUT, '02-world.png') });
+    await page.screenshot({ path: join(OUT, '02-world.png'), timeout: 120000 });
 
     const info = await page.evaluate(() => {
       const g = window.claudecraft;
@@ -71,16 +71,16 @@ async function main() {
     // Look around and at the ground, open the inventory, check night time.
     await page.evaluate(() => { const g = window.claudecraft; g.player.pitch = -0.6; g.showDebug = true; });
     await sleep(1500);
-    await page.screenshot({ path: join(OUT, '03-look-down-debug.png') });
+    await page.screenshot({ path: join(OUT, '03-look-down-debug.png'), timeout: 120000 });
     await page.evaluate(() => { const g = window.claudecraft; g.showDebug = false; g.player.pitch = 0.05; g.ticks = 12600; });
     await sleep(1500);
-    await page.screenshot({ path: join(OUT, '04-sunset.png') });
+    await page.screenshot({ path: join(OUT, '04-sunset.png'), timeout: 120000 });
     await page.evaluate(() => { window.claudecraft.ticks = 18000; });
     await sleep(1500);
-    await page.screenshot({ path: join(OUT, '05-night.png') });
+    await page.screenshot({ path: join(OUT, '05-night.png'), timeout: 120000 });
     await page.evaluate(() => { const g = window.claudecraft; g.ticks = 6000; g.openInventory(false); });
     await sleep(800);
-    await page.screenshot({ path: join(OUT, '06-inventory.png') });
+    await page.screenshot({ path: join(OUT, '06-inventory.png'), timeout: 120000 });
     await page.evaluate(() => window.claudecraft.closeInventory());
     if (errors.length) {
       console.error('Console errors:\n' + errors.join('\n'));

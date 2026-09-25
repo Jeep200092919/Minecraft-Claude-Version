@@ -10,7 +10,7 @@
 //   uint8  normal       face index 0-5, 6 = plant (lit as if facing up)
 //   uint8  temp, humid  biome climate for grass/foliage tinting
 import { CHUNK_SIZE, CHUNK_HEIGHT } from './constants.js';
-import { B, BLOCKS, IS_OPAQUE } from './blocks.js';
+import { B, BLOCKS, IS_OPAQUE, IS_SOLID } from './blocks.js';
 import { generateTextures } from './textures.js';
 
 export const VERTEX_BYTES = 16;
@@ -259,6 +259,67 @@ function emitCross(mb, x, y, z, layer, light, sway) {
   }
 }
 
+// Partial blocks: faces on the cell boundary are hidden against opaque
+// neighbours and lit by the neighbouring cell; interior faces use the
+// block's own light.
+function onBoundary(box, f) {
+  switch (f) {
+    case 0: return box[3] === 16;
+    case 1: return box[0] === 0;
+    case 2: return box[4] === 16;
+    case 3: return box[1] === 0;
+    case 4: return box[5] === 16;
+    default: return box[2] === 0;
+  }
+}
+
+function emitBoxesCulled(mb, x, y, z, pc, boxes, layers, flags = 0) {
+  for (const box of boxes) {
+    for (let f = 0; f < 6; f++) {
+      const edge = onBoundary(box, f);
+      const npc = pc + FACES[f].delta;
+      if (edge && IS_OPAQUE[padBlocks[npc]]) continue;
+      const l = edge ? padLight[npc] : padLight[pc];
+      emitBox(mb, x, y, z, box, layers, (l >> 4) * 16, (l & 15) * 16, 1 << f, null, null, flags);
+    }
+  }
+}
+
+const LANTERN_BOXES = [[5, 0, 5, 11, 7, 11], [6, 7, 6, 10, 9, 10]];
+const HANGING_LANTERN_BOXES = [[5, 1, 5, 11, 8, 11], [6, 8, 6, 10, 10, 10], [7, 10, 7, 9, 16, 9]];
+const FENCE_POST = [6, 0, 6, 10, 16, 10];
+const FENCE_ARMS = [
+  [[10, 6, 7, 16, 9, 9], [10, 12, 7, 16, 15, 9]],
+  [[0, 6, 7, 6, 9, 9], [0, 12, 7, 6, 15, 9]],
+  null, null,
+  [[7, 6, 10, 9, 9, 16], [7, 12, 10, 9, 15, 16]],
+  [[7, 6, 0, 9, 9, 6], [7, 12, 0, 9, 15, 6]],
+];
+const CHEST_BOX = [1, 0, 1, 15, 14, 15];
+
+function fenceConnects(nid) {
+  return nid === B.OAK_FENCE || (IS_OPAQUE[nid] && IS_SOLID[nid]);
+}
+
+// '#'-shaped crop planes, sunk 1px into the farmland below.
+function emitCrop(mb, x, y, z, layer, light) {
+  const sky = (light >> 4) * 16, blk = (light & 15) * 16;
+  const X = x * 16, Y = y * 16 - 1, Z = z * 16;
+  const planes = [
+    [[4, 0], [4, 16]], [[12, 0], [12, 16]],
+    [[0, 4], [16, 4]], [[0, 12], [16, 12]],
+  ];
+  for (const [[ax, az], [bx, bz]] of planes) {
+    const quad = [[ax, 0, az, 0, 16], [bx, 0, bz, 16, 16], [bx, 16, bz, 16, 0], [ax, 16, az, 0, 0]];
+    for (const order of [[0, 1, 2, 3], [1, 0, 3, 2]]) {
+      for (const i of order) {
+        const q = quad[i];
+        mb.vertex(X + q[0], Y + q[1], Z + q[2], q[3], q[4], layer, sky, blk, 255, q[1] ? FLAG_SWAY : 0, NORMAL_PLANT);
+      }
+    }
+  }
+}
+
 const TORCH_BOX = [7, 0, 7, 9, 10, 9];
 // Makes the torch top show the flame pixels (texture rows 6-7).
 const TORCH_UV = [null, null, (u, v) => [u, v - 1], null, null, null];
@@ -322,6 +383,40 @@ export function buildChunkMesh(world, chunk) {
             emitBox(solid, x, y, z, TORCH_BOX, layers, (l >> 4) * 16, (l & 15) * 16, 63 & ~(1 << 3), WALL_TORCH_TRANSFORMS[id] || null, TORCH_UV, allFlags);
             break;
           }
+          case 'lantern': {
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            emitBoxesCulled(solid, x, y, z, pc, id === B.HANGING_LANTERN ? HANGING_LANTERN_BOXES : LANTERN_BOXES, layers, allFlags);
+            break;
+          }
+          case 'fence': {
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            const boxes = [FENCE_POST];
+            for (const f of [0, 1, 4, 5]) {
+              if (fenceConnects(padBlocks[pc + FACES[f].delta])) boxes.push(...FENCE_ARMS[f]);
+            }
+            emitBoxesCulled(solid, x, y, z, pc, boxes, layers, allFlags);
+            break;
+          }
+          case 'stairs':
+          case 'slab': {
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            emitBoxesCulled(solid, x, y, z, pc, block.boxes, layers, allFlags);
+            break;
+          }
+          case 'box': {
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            emitBoxesCulled(solid, x, y, z, pc, [block.box], layers, allFlags);
+            break;
+          }
+          case 'chest': {
+            const layers = [0, 1, 2, 3, 4, 5].map((f) => faceLayers[layerBase + f]);
+            emitBoxesCulled(solid, x, y, z, pc, [CHEST_BOX], layers, allFlags);
+            break;
+          }
+          case 'crop': {
+            emitCrop(solid, x, y, z, faceLayers[layerBase], padLight[pc]);
+            break;
+          }
           case 'cactus': {
             let mask = 0b110011; // sides always (they are inset)
             if (shouldDrawFace(id, padBlocks[pc + FACES[2].delta]) && padBlocks[pc + FACES[2].delta] !== id) mask |= 1 << 2;
@@ -355,6 +450,12 @@ export function buildBlockMesh(id, sky = 240, blk = 0) {
     emitBox(mb, 0, 0, 0, TORCH_BOX, layers, sky, blk, 63, null, TORCH_UV);
   } else if (block.shape === 'cactus') {
     emitBox(mb, 0, 0, 0, [1, 0, 1, 15, 16, 15], layers, sky, blk);
+  } else if (block.shape === 'chest') {
+    emitBox(mb, 0, 0, 0, CHEST_BOX, layers, sky, blk);
+  } else if (block.boxes) {
+    for (const box of block.boxes) emitBox(mb, 0, 0, 0, box, layers, sky, blk);
+  } else if (block.box) {
+    emitBox(mb, 0, 0, 0, block.box, layers, sky, blk);
   } else {
     emitBox(mb, 0, 0, 0, [0, 0, 0, 16, 16, 16], layers, sky, blk);
   }

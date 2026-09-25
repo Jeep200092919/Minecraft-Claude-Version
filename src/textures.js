@@ -630,6 +630,411 @@ for (const tier of Object.keys(TIER_COLORS)) {
   }
 }
 
+// --- Additional blocks ------------------------------------------------------
+
+const IRON_DARK = [52, 54, 62];
+const IRON = [84, 86, 96];
+
+function transparent(t) {
+  t.fill((x, y) => t.set(x, y, [0, 0, 0], 0));
+}
+
+function lanternSide(t, rng) {
+  transparent(t);
+  // chain links (hanging lantern), rows 0-5
+  for (let y = 0; y < 6; y++) {
+    t.set(7, y, y % 3 === 1 ? [40, 40, 46] : IRON);
+    t.set(8, y, y % 3 === 1 ? IRON : [40, 40, 46]);
+  }
+  // cap rows 7-8
+  for (let x = 6; x <= 9; x++) { t.set(x, 7, IRON); t.set(x, 8, IRON_DARK); }
+  // glowing body rows 9-15
+  for (let y = 9; y <= 15; y++) {
+    for (let x = 5; x <= 10; x++) {
+      const edge = x === 5 || x === 10 || y === 9 || y === 15;
+      if (edge) t.set(x, y, (x + y) % 2 ? IRON_DARK : IRON);
+      else {
+        const d = Math.hypot(x - 7.5, y - 12);
+        t.set(x, y, mix([255, 236, 150], [236, 140, 50], Math.min(1, d / 3.2 + rng() * 0.1)));
+      }
+    }
+  }
+}
+
+function lanternTop(t, rng) {
+  t.fill((x, y) => t.set(x, y, add(IRON_DARK, (rng() - 0.5) * 10)));
+  for (let y = 6; y <= 9; y++) for (let x = 6; x <= 9; x++) t.set(x, y, IRON);
+  t.set(7, 7, [30, 30, 34]); t.set(8, 8, [30, 30, 34]);
+}
+
+function lanternItem(t, rng) {
+  transparent(t);
+  for (let x = 6; x <= 9; x++) t.set(x, 1, IRON);
+  t.set(5, 2, IRON); t.set(10, 2, IRON); t.set(5, 3, IRON_DARK); t.set(10, 3, IRON_DARK);
+  for (let x = 5; x <= 10; x++) { t.set(x, 4, IRON); t.set(x, 5, IRON_DARK); }
+  for (let y = 6; y <= 13; y++) {
+    for (let x = 4; x <= 11; x++) {
+      const edge = x === 4 || x === 11 || y === 6 || y === 13;
+      if (edge) t.set(x, y, (x + y) % 2 ? IRON_DARK : IRON);
+      else t.set(x, y, mix([255, 240, 160], [236, 140, 50], Math.min(1, Math.hypot(x - 7.5, y - 9.5) / 3.5 + rng() * 0.1)));
+    }
+  }
+  for (let x = 5; x <= 10; x++) t.set(x, 14, IRON_DARK);
+}
+
+function fenceItem(t, rng) {
+  transparent(t);
+  const wood = [160, 128, 76];
+  for (let y = 1; y < 16; y++) {
+    for (const x of [2, 3, 12, 13]) t.set(x, y, add(wood, (rng() - 0.5) * 16 - (x % 2 ? 12 : 0)));
+  }
+  for (let x = 4; x < 12; x++) {
+    for (const y of [4, 5, 10, 11]) t.set(x, y, add(wood, (rng() - 0.5) * 14 - (y % 2 ? 14 : 0)));
+  }
+}
+
+function mossyCobblestone(t, rng) {
+  cobblestone(t, rng);
+  const vn = valueNoise(rng, 8);
+  t.fill((x, y) => {
+    if (vn(x, y) + rng() * 0.25 > 0.72) t.set(x, y, add([86, 118, 52], (rng() - 0.5) * 24));
+  });
+}
+
+function flower(t, rng, petal, center) {
+  t.fill((x, y) => t.set(x, y, [60, 120, 40], 0));
+  stem(t, 8);
+  t.set(6, 12, [70, 135, 45]); t.set(8, 13, [70, 135, 45]); t.set(9, 11, [70, 135, 45]);
+  const pts = [[7, 4], [6, 5], [8, 5], [5, 6], [9, 6], [6, 7], [8, 7], [7, 8], [7, 5], [7, 7], [6, 6], [8, 6]];
+  for (const [x, y] of pts) t.set(x, y, add(petal, (rng() - 0.5) * 24));
+  t.set(7, 6, center);
+}
+
+function smoothStone(t, rng, base = [150, 150, 150]) {
+  noisy(t, rng, base, 5, 5);
+  t.fill((x, y) => {
+    if (x === 0 || y === 0 || x === 15 || y === 15) t.set(x, y, scale(base, 0.72));
+  });
+}
+
+function furnaceFront(t, rng, lit) {
+  smoothStone(t, rng, [128, 128, 128]);
+  for (let x = 1; x < 15; x++) t.set(x, 4, [96, 96, 96]);
+  for (let y = 8; y <= 13; y++) {
+    for (let x = 4; x <= 11; x++) {
+      const edge = y === 8 || x === 4 || x === 11;
+      if (edge) t.set(x, y, [70, 70, 70]);
+      else if (lit) {
+        const f = (13 - y) / 5 + rng() * 0.35;
+        t.set(x, y, f > 0.9 ? [255, 236, 120] : f > 0.5 ? [255, 160, 40] : [210, 70, 16]);
+      } else t.set(x, y, (x + y) % 2 ? [24, 24, 24] : [34, 34, 34]);
+    }
+  }
+  for (let x = 5; x <= 10; x++) t.set(x, 13, lit ? [120, 60, 20] : [46, 46, 46]);
+}
+
+const CHEST_WOOD = [150, 104, 50];
+function chestTex(t, rng, face) {
+  const vn = valueNoise(rng, 8);
+  t.fill((x, y) => t.set(x, y, add(CHEST_WOOD, (vn(x, y * 3) - 0.5) * 22 + (rng() - 0.5) * 8)));
+  const dark = [70, 46, 20];
+  t.fill((x, y) => {
+    if (x <= 1 || x >= 14 || y <= 2 || y >= 15) t.set(x, y, dark);
+  });
+  if (face !== 'top') {
+    for (let x = 1; x < 15; x++) t.set(x, 7, dark);
+    if (face === 'front') {
+      for (let y = 6; y <= 9; y++) for (let x = 7; x <= 8; x++) t.set(x, y, y === 9 ? [120, 120, 130] : [190, 190, 200]);
+    }
+  }
+}
+
+function farmland(t, rng) {
+  noisy(t, rng, [96, 64, 40], 8, 8);
+  t.fill((x, y) => {
+    if (y % 4 === 0) t.set(x, y, [64, 42, 26]);
+    else if (y % 4 === 1) t.set(x, y, add(t.get(x, y), 10));
+  });
+}
+
+function dirtPathTop(t, rng) {
+  noisy(t, rng, [150, 122, 68], 8, 10);
+  t.fill((x, y) => { if (rng() < 0.08) t.set(x, y, [120, 96, 54]); });
+}
+
+function dirtPathSide(t, rng) {
+  dirt(t, rng);
+  for (let x = 0; x < 16; x++) {
+    t.set(x, 1, add([150, 122, 68], (rng() - 0.5) * 12));
+    if (rng() < 0.6) t.set(x, 2, add([140, 112, 62], (rng() - 0.5) * 12));
+  }
+}
+
+function wheat(t, rng, stage) {
+  transparent(t);
+  const heights = [4, 8, 12, 14];
+  const h = heights[stage];
+  const green = [[82, 150, 40], [100, 168, 52], [132, 160, 46], [196, 170, 70]][stage];
+  for (let s = 0; s < 6; s++) {
+    const x0 = 1 + Math.floor(rng() * 14);
+    const hh = h - Math.floor(rng() * 3);
+    for (let k = 0; k < hh; k++) {
+      const x = Math.max(0, Math.min(15, x0 + Math.round(Math.sin(k * 0.6 + s) * 0.6)));
+      const y = 15 - k;
+      if (stage === 3 && k > hh - 5) t.set(x, y, add([214, 176, 76], (rng() - 0.5) * 30));
+      else t.set(x, y, add(green, (rng() - 0.5) * 20));
+    }
+  }
+}
+
+function tntSide(t, rng) {
+  t.fill((x, y) => {
+    let c = add([196, 44, 32], (rng() - 0.5) * 16);
+    if (x % 4 === 0) c = scale(c, 0.8);
+    t.set(x, y, c);
+  });
+  for (let y = 6; y <= 10; y++) for (let x = 0; x < 16; x++) t.set(x, y, add([232, 232, 228], (rng() - 0.5) * 8));
+  const T = [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]];
+  const N = [[0, 0], [0, 1], [0, 2], [1, 0], [2, 0], [2, 1], [2, 2]];
+  const put = (glyph, ox) => glyph.forEach(([gx, gy]) => t.set(ox + gx, 7 + gy, [30, 30, 30]));
+  put(T, 2); put(N, 6); put(T, 11);
+}
+
+function tntTop(t, rng, bottom) {
+  noisy(t, rng, [196, 44, 32], 8, 4);
+  if (!bottom) {
+    for (let y = 6; y <= 9; y++) for (let x = 6; x <= 9; x++) t.set(x, y, [90, 80, 70]);
+    t.set(7, 7, [40, 36, 30]); t.set(8, 8, [40, 36, 30]);
+  }
+}
+
+function stoneSlabSide(t, rng) {
+  smoothStone(t, rng, [150, 150, 150]);
+  for (let x = 0; x < 16; x++) { t.set(x, 7, [104, 104, 104]); t.set(x, 8, [168, 168, 168]); }
+}
+
+// --- More item sprites ------------------------------------------------------
+
+function blob(t, rng, cx, cy, rx, ry, color, rough = 0.15, jitter = 14) {
+  t.fill((x, y) => {
+    const d = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry) + (rng() - 0.5) * rough;
+    if (d < 1) t.set(x, y, add(color, (rng() - 0.5) * jitter));
+  });
+}
+
+function swordSprite(t, tierKey) {
+  clearTile(t);
+  const blade = TIER_COLORS[tierKey];
+  t.fill((x, y) => {
+    const [u, v] = toolCoords(x, y);
+    if (u >= -0.2 && u <= 3.2 && Math.abs(v) <= 0.75) t.set(x, y, scale(STICK_COLOR, 0.85));
+    else if (u > 3.2 && u <= 4.4 && Math.abs(v) <= 2.4) t.set(x, y, [60, 50, 40]);
+    else if (u > 4.4 && u <= 13 && Math.abs(v) <= 1.1 - Math.max(0, u - 11.6) * 0.75) t.set(x, y, scale(blade, v < 0 ? 1.12 : 0.88));
+  });
+  outline(t, [36, 28, 20]);
+}
+
+function hoeSprite(t, tierKey) {
+  clearTile(t);
+  const head = TIER_COLORS[tierKey];
+  const L = 10.5;
+  drawStick(t, L);
+  t.fill((x, y) => {
+    const [u, v] = toolCoords(x, y);
+    if (v <= 0.9 && v >= -3.8 && Math.abs(u - L) <= 0.9) t.set(x, y, scale(head, v < -1 ? 1.08 : 0.92));
+  });
+  outline(t, [36, 28, 20]);
+}
+
+function appleSprite(t, rng) {
+  clearTile(t);
+  blob(t, rng, 8, 9.5, 5, 4.8, [200, 30, 34], 0.05, 14);
+  t.set(5, 7, [255, 140, 140]); t.set(6, 7, [255, 110, 110]); t.set(5, 8, [240, 90, 90]);
+  t.set(8, 3, [100, 70, 30]); t.set(8, 4, [100, 70, 30]); t.set(9, 3, [70, 150, 40]); t.set(10, 2, [70, 150, 40]);
+  outline(t, [60, 10, 10]);
+}
+
+function breadSprite(t, rng) {
+  clearTile(t);
+  blob(t, rng, 8, 9, 6.8, 3.8, [196, 136, 62], 0.08, 12);
+  for (const [x, y] of [[5, 8], [6, 7], [8, 8], [9, 7], [11, 8], [12, 7]]) t.set(x, y, [150, 96, 40]);
+  outline(t, [80, 50, 20]);
+}
+
+function meatSprite(t, rng, base, fat, cooked) {
+  clearTile(t);
+  blob(t, rng, 8, 8.5, 6, 4.6, base, 0.2, 16);
+  t.fill((x, y) => {
+    if (t.alpha(x, y) && rng() < (cooked ? 0.08 : 0.12)) t.set(x, y, fat);
+  });
+  for (let k = 0; k < 4; k++) t.set(12 + (k % 2), 11 + (k >> 1), [236, 228, 210]);
+  outline(t, scale(base, 0.45));
+}
+
+function drumstickSprite(t, rng, base) {
+  clearTile(t);
+  blob(t, rng, 6.5, 7, 4.2, 4.6, base, 0.15, 14);
+  t.fill((x, y) => {
+    const [u, v] = toolCoords(x, y);
+    void u;
+    if (x > 8 && y > 9 && Math.abs(v) < 0.8) t.set(x, y, [236, 228, 210]);
+  });
+  t.set(12, 13, [236, 228, 210]); t.set(13, 12, [236, 228, 210]); t.set(13, 13, [236, 228, 210]);
+  outline(t, scale(base, 0.45));
+}
+
+function leatherSprite(t, rng) {
+  clearTile(t);
+  blob(t, rng, 8, 8, 6, 6, [140, 82, 40], 0.45, 18);
+  outline(t, [60, 34, 16]);
+}
+
+function featherSprite(t) {
+  clearTile(t);
+  t.fill((x, y) => {
+    const [u, v] = toolCoords(x, y);
+    if (u >= 0 && u <= 12.5) {
+      if (Math.abs(v) <= 0.6) t.set(x, y, [150, 150, 150]);
+      else if (u > 3 && Math.abs(v) <= 2.2 - Math.abs(u - 8.5) * 0.25) t.set(x, y, v < 0 ? [250, 250, 250] : [222, 222, 226]);
+    }
+  });
+  outline(t, [90, 90, 96]);
+}
+
+function gunpowderSprite(t, rng) {
+  clearTile(t);
+  t.fill((x, y) => {
+    const h = 5 - Math.abs(x - 7.5) * 0.7;
+    if (y >= 14 - h && y <= 13 && x >= 2 && x <= 13) t.set(x, y, rng() < 0.3 ? [40, 40, 40] : add([110, 110, 110], (rng() - 0.5) * 40));
+  });
+  outline(t, [30, 30, 30]);
+}
+
+function flintSprite(t, rng) {
+  clearTile(t);
+  t.fill((x, y) => {
+    const a = (x - 3) + (y - 13) * -0.4, b = Math.abs(x - 8) + Math.abs(y - 8) * 0.8;
+    if (b < 5.5 && a > -2 && y > 3) t.set(x, y, rng() < 0.2 ? [90, 90, 96] : [48, 48, 52]);
+  });
+  outline(t, [16, 16, 18]);
+}
+
+function flintAndSteelSprite(t, rng) {
+  clearTile(t);
+  t.fill((x, y) => {
+    const d = Math.hypot(x - 6, y - 6);
+    if (d > 2.5 && d < 4.4 && !(x > 6 && y > 6)) t.set(x, y, [180, 180, 188]);
+  });
+  blob(t, rng, 11, 11, 2.8, 2.6, [52, 52, 58], 0.3, 10);
+  outline(t, [30, 30, 34]);
+}
+
+function wheatItem(t, rng) {
+  clearTile(t);
+  for (let s = 0; s < 4; s++) {
+    for (let k = 0; k < 12; k++) {
+      const x = 4 + s * 2 + Math.round(k * (1.5 - s) * 0.12);
+      const y = 14 - k;
+      t.set(x, y, k > 6 ? add([214, 176, 76], (rng() - 0.5) * 30) : [150, 130, 60]);
+    }
+  }
+  outline(t, [96, 72, 24]);
+}
+
+function seedsSprite(t, rng) {
+  clearTile(t);
+  for (let i = 0; i < 9; i++) {
+    const x = 3 + Math.floor(rng() * 10), y = 4 + Math.floor(rng() * 9);
+    t.set(x, y, [90, 150, 50]); t.set(x + 1, y, [70, 120, 40]);
+  }
+}
+
+function eggSprite(t, rng, base, spots) {
+  clearTile(t);
+  t.fill((x, y) => {
+    const dy = y + 0.5 - 8.5;
+    const rx = dy < 0 ? 4.2 - (-dy) * 0.12 : 4.6;
+    if (Math.hypot((x + 0.5 - 8) / rx, dy / 6.2) < 1) t.set(x, y, add(base, (rng() - 0.5) * 10));
+  });
+  for (let i = 0; i < 7; i++) {
+    const x = 5 + Math.floor(rng() * 7), y = 4 + Math.floor(rng() * 9);
+    if (t.alpha(x, y)) { t.set(x, y, spots); if (t.alpha(x + 1, y)) t.set(x + 1, y, spots); }
+  }
+  outline(t, scale(base, 0.4));
+}
+
+// 16 round 4x4 puffs from light (top-left) to dark (bottom-right); particles
+// sample one cell each.
+function smokeTex(t, rng) {
+  t.fill((x, y) => {
+    const cx = x & 3, cy = y & 3;
+    const corner = (cx === 0 || cx === 3) && (cy === 0 || cy === 3);
+    const cell = (y >> 2) * 4 + (x >> 2);
+    const inner = cx > 0 && cx < 3 && cy > 0 && cy < 3;
+    const v = 238 - cell * 9 + (inner ? 10 : 0) + (rng() - 0.5) * 12;
+    t.set(x, y, [v, v, v], corner ? 0 : 255);
+  });
+}
+
+Object.assign(GENERATORS, {
+  smoke: smokeTex,
+  lantern: lanternSide,
+  lantern_top: lanternTop,
+  lantern_item: lanternItem,
+  fence_item: fenceItem,
+  mossy_cobblestone: mossyCobblestone,
+  cornflower: (t, r) => flower(t, r, [70, 100, 220], [40, 50, 120]),
+  oxeye_daisy: (t, r) => flower(t, r, [240, 240, 236], [236, 196, 40]),
+  furnace_front: (t, r) => furnaceFront(t, r, false),
+  furnace_front_on: (t, r) => furnaceFront(t, r, true),
+  furnace_side: (t, r) => smoothStone(t, r, [128, 128, 128]),
+  furnace_top: (t, r) => smoothStone(t, r, [138, 138, 138]),
+  chest_front: (t, r) => chestTex(t, r, 'front'),
+  chest_side: (t, r) => chestTex(t, r, 'side'),
+  chest_top: (t, r) => chestTex(t, r, 'top'),
+  farmland,
+  dirt_path_top: dirtPathTop,
+  dirt_path_side: dirtPathSide,
+  wheat_0: (t, r) => wheat(t, r, 0),
+  wheat_1: (t, r) => wheat(t, r, 1),
+  wheat_2: (t, r) => wheat(t, r, 2),
+  wheat_3: (t, r) => wheat(t, r, 3),
+  tnt_side: tntSide,
+  tnt_top: (t, r) => tntTop(t, r, false),
+  tnt_bottom: (t, r) => tntTop(t, r, true),
+  stone_slab_top: (t, r) => smoothStone(t, r),
+  stone_slab_side: stoneSlabSide,
+  item_wheat_seeds: seedsSprite,
+  item_wheat: wheatItem,
+  item_bread: breadSprite,
+  item_apple: appleSprite,
+  item_raw_porkchop: (t, r) => meatSprite(t, r, [236, 146, 146], [250, 222, 222], false),
+  item_cooked_porkchop: (t, r) => meatSprite(t, r, [178, 110, 60], [220, 170, 110], true),
+  item_raw_beef: (t, r) => meatSprite(t, r, [196, 52, 50], [240, 210, 210], false),
+  item_steak: (t, r) => meatSprite(t, r, [120, 70, 40], [80, 44, 22], true),
+  item_raw_chicken: (t, r) => drumstickSprite(t, r, [240, 200, 180]),
+  item_cooked_chicken: (t, r) => drumstickSprite(t, r, [200, 130, 60]),
+  item_raw_mutton: (t, r) => meatSprite(t, r, [206, 70, 70], [250, 230, 230], false),
+  item_cooked_mutton: (t, r) => meatSprite(t, r, [150, 84, 50], [200, 150, 110], true),
+  item_rotten_flesh: (t, r) => meatSprite(t, r, [120, 110, 60], [80, 120, 50], false),
+  item_leather: leatherSprite,
+  item_feather: featherSprite,
+  item_gunpowder: gunpowderSprite,
+  item_flint: flintSprite,
+  item_flint_and_steel: flintAndSteelSprite,
+  item_pig_spawn_egg: (t, r) => eggSprite(t, r, [236, 160, 160], [200, 100, 110]),
+  item_cow_spawn_egg: (t, r) => eggSprite(t, r, [80, 60, 44], [160, 160, 160]),
+  item_sheep_spawn_egg: (t, r) => eggSprite(t, r, [232, 232, 232], [236, 170, 170]),
+  item_chicken_spawn_egg: (t, r) => eggSprite(t, r, [220, 220, 220], [200, 30, 30]),
+  item_zombie_spawn_egg: (t, r) => eggSprite(t, r, [40, 140, 140], [80, 120, 60]),
+  item_creeper_spawn_egg: (t, r) => eggSprite(t, r, [80, 176, 70], [20, 20, 20]),
+  item_villager_spawn_egg: (t, r) => eggSprite(t, r, [100, 70, 50], [190, 150, 110]),
+});
+for (const tier of Object.keys(TIER_COLORS)) {
+  GENERATORS[`item_${tier}_sword`] = (t) => swordSprite(t, tier);
+  GENERATORS[`item_${tier}_hoe`] = (t) => hoeSprite(t, tier);
+}
+
 // For transparent pixels, copy the average opaque colour so mipmapping does
 // not produce dark fringes around cut-out textures.
 function fixTransparentColors(t) {

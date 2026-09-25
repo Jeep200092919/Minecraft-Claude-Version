@@ -20,7 +20,10 @@
       <div id="item-name"></div>
       <div id="bars">
         <div id="hearts"></div>
-        <div id="bubbles"></div>
+        <div class="bars-right">
+          <div id="bubbles"></div>
+          <div id="hunger"></div>
+        </div>
       </div>
       <div id="hotbar"></div>
     </div>
@@ -90,6 +93,7 @@
       <label class="slider">FOV: <span id="opt-fov-val"></span><input type="range" id="opt-fov" min="50" max="110" step="1"></label>
       <label class="slider">Mouse Sensitivity: <span id="opt-sens-val"></span><input type="range" id="opt-sens" min="10" max="300" step="5"></label>
       <label class="slider">Volume: <span id="opt-vol-val"></span><input type="range" id="opt-vol" min="0" max="100" step="5"></label>
+      <label class="slider">Music: <span id="opt-music-val"></span><input type="range" id="opt-music" min="0" max="100" step="5"></label>
       <div class="row">
         <button type="button" id="opt-shaders">Shaders: ON</button>
         <button type="button" id="opt-shadows">Shadows: ON</button>
@@ -112,8 +116,9 @@
         <dt>Shift</dt><dd>Sneak (won't fall off edges) / fly down</dd>
         <dt>Ctrl or double-tap W</dt><dd>Sprint</dd>
         <dt>Double-tap Space</dt><dd>Toggle flying (Creative)</dd>
-        <dt>Left click</dt><dd>Break block (hold in Survival)</dd>
-        <dt>Right click</dt><dd>Place block / use crafting table</dd>
+        <dt>Left click</dt><dd>Break block (hold in Survival) / attack</dd>
+        <dt>Right click</dt><dd>Place block / open chest, furnace, crafting table</dd>
+        <dt>Hold right click</dt><dd>Eat the food in your hand</dd>
         <dt>Middle click</dt><dd>Pick block</dd>
         <dt>1–9 / wheel</dt><dd>Select hotbar slot</dd>
         <dt>E</dt><dd>Inventory &amp; crafting</dd>
@@ -121,7 +126,8 @@
         <dt>F1</dt><dd>Hide HUD</dd>
         <dt>Esc</dt><dd>Pause menu</dd>
       </dl>
-      <p class="hint">Inventory: left click picks up / places a stack, right click splits / places one, shift-click moves quickly.</p>
+      <p class="hint">Inventory: left click picks up / places a stack, right click splits / places one, shift-click moves quickly.
+        Till grass with a hoe and plant seeds on farmland; light TNT with flint and steel.</p>
     </div>
     <div class="menu"><button data-action="controls-done">Done</button></div>
   </section>

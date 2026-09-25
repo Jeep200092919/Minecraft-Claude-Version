@@ -1,8 +1,8 @@
 // DOM user interface: menus, HUD, inventory and crafting screens.
-import { ITEMS, CREATIVE_ITEMS } from './blocks.js';
+import { ITEMS, CREATIVE_ITEMS, SMELTING, SMELT_TIME, fuelTime } from './blocks.js';
 import { clickSlot, matchRecipe, consumeCraftingGrid, maxStack, stack } from './inventory.js';
 import { itemIcon, hudIcons, dirtBackground, textureDataURL } from './icons.js';
-import { MAX_HEALTH, MAX_AIR } from './player.js';
+import { MAX_HEALTH, MAX_AIR, MAX_HUNGER } from './player.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -174,6 +174,7 @@ export class UI {
     bindRange('opt-fov', 'fov', (v) => `${v}`);
     bindRange('opt-sens', 'sensitivity', (v) => `${v}%`);
     bindRange('opt-vol', 'volume', (v) => (v ? `${v}%` : 'OFF'));
+    bindRange('opt-music', 'music', (v) => (v ? `${v}%` : 'OFF'));
     const toggle = (id, key, label) => {
       $(id).addEventListener('click', () => {
         s()[key] = !s()[key];
@@ -189,7 +190,7 @@ export class UI {
   }
 
   showOptions() {
-    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'viewBobbing', 'invertMouse', 'shaders', 'shadows']) this[`refresh_${k}`]();
+    for (const k of ['renderDistance', 'fov', 'sensitivity', 'volume', 'music', 'viewBobbing', 'invertMouse', 'shaders', 'shadows']) this[`refresh_${k}`]();
     this.show('options');
   }
 
@@ -233,13 +234,16 @@ export class UI {
 
   updateStatus(player, creative) {
     const air = player.headInWater || player.air < MAX_AIR ? Math.ceil((player.air / MAX_AIR) * 10) : -1;
-    const sig = `${creative}|${player.health}|${air}|${player.hurtTime > 0}`;
+    const starving = player.hunger <= 0 || (player.saturation <= 0 && Math.floor(this.game.seconds * 6) % 5 === 0);
+    const sig = `${creative}|${player.health}|${air}|${player.hurtTime > 0}|${player.hunger}|${starving}`;
     if (sig === this.statusSig) return;
     this.statusSig = sig;
     const hearts = $('hearts');
     const bubbles = $('bubbles');
+    const hunger = $('hunger');
     hearts.innerHTML = '';
     bubbles.innerHTML = '';
+    hunger.innerHTML = '';
     $('bars').style.visibility = creative ? 'hidden' : 'visible';
     if (creative) return;
     const icons = hudIcons();
@@ -251,6 +255,14 @@ export class UI {
       hearts.appendChild(img);
     }
     hearts.classList.toggle('shake', player.health <= 4);
+    for (let i = 0; i < MAX_HUNGER / 2; i++) {
+      const img = document.createElement('img');
+      const f = player.hunger - i * 2;
+      img.src = f >= 2 ? icons.foodFull : f === 1 ? icons.foodHalf : icons.foodEmpty;
+      img.alt = '';
+      hunger.appendChild(img);
+    }
+    hunger.classList.toggle('shake', starving);
     for (let i = 0; i < Math.max(0, air); i++) {
       const img = document.createElement('img');
       img.src = icons.bubble;
@@ -292,9 +304,17 @@ export class UI {
 
   // --- Inventory ----------------------------------------------------------------------
 
-  openInventory(table) {
-    const size = table ? 3 : 2;
-    this.craft = { size, slots: new Array(size * size).fill(null), table };
+  // mode: 'player', 'table' or a container { type: 'chest' | 'furnace', entity }.
+  openInventory(mode) {
+    this.container = typeof mode === 'object' && mode ? mode : null;
+    if (this.container) {
+      this.craft = null;
+    } else {
+      const table = mode === 'table';
+      const size = table ? 3 : 2;
+      this.craft = { size, slots: new Array(size * size).fill(null), table };
+    }
+    this.containerSig = '';
     this.cursor = null;
     this.paletteScroll = 0;
     this.buildInventory();
@@ -310,6 +330,7 @@ export class UI {
     if (this.cursor) inv.add(this.cursor.id, this.cursor.count);
     this.cursor = null;
     this.craft = null;
+    this.container = null;
     this.updateCursor();
     this.hideTooltip();
   }
@@ -318,9 +339,11 @@ export class UI {
     const panel = $('inventory-panel');
     panel.innerHTML = '';
     const creative = this.game.creative;
-    const { size, table } = this.craft;
+    const { size, table } = this.craft || {};
 
-    if (creative && !table) {
+    if (this.container) {
+      this.buildContainer(panel);
+    } else if (creative && !table) {
       const h = document.createElement('h3');
       h.textContent = 'Creative Inventory';
       panel.appendChild(h);
@@ -359,6 +382,54 @@ export class UI {
     this.refreshInventory();
   }
 
+  buildContainer(panel) {
+    const { type } = this.container;
+    const h = document.createElement('h3');
+    h.textContent = type === 'chest' ? 'Chest' : 'Furnace';
+    panel.appendChild(h);
+    if (type === 'chest') {
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      for (let i = 0; i < 27; i++) grid.appendChild(this.makeSlot('container', i));
+      panel.appendChild(grid);
+      return;
+    }
+    const row = document.createElement('div');
+    row.className = 'crafting furnace';
+    const col = document.createElement('div');
+    col.className = 'furnace-col';
+    const flame = document.createElement('div');
+    flame.className = 'flame';
+    flame.innerHTML = '<div id="furnace-flame"></div>';
+    col.append(this.makeSlot('container', 0), flame, this.makeSlot('container', 1));
+    const arrow = document.createElement('div');
+    arrow.className = 'progress';
+    arrow.innerHTML = '<div id="furnace-progress"></div>';
+    const out = this.makeSlot('container', 2);
+    out.classList.add('big');
+    row.append(col, arrow, out);
+    panel.appendChild(row);
+  }
+
+  // Called every frame while a container is open: furnaces change on their own.
+  refreshContainer() {
+    const c = this.container;
+    if (!c || this.screen !== 'inventory') return;
+    const be = c.entity;
+    const sig = be.slots.map((s) => (s ? `${s.id}x${s.count}` : '-')).join(',');
+    if (sig !== this.containerSig) {
+      this.containerSig = sig;
+      $('inventory-panel').querySelectorAll('.slot[data-kind="container"]').forEach((el) => {
+        this.renderStackInto(el, be.slots[Number(el.dataset.index)]);
+      });
+    }
+    if (c.type === 'furnace') {
+      const flame = $('furnace-flame'), prog = $('furnace-progress');
+      if (flame) flame.style.height = `${be.burnMax > 0 ? Math.round((be.burn / be.burnMax) * 100) : 0}%`;
+      if (prog) prog.style.width = `${Math.round((be.cook / SMELT_TIME) * 100)}%`;
+    }
+  }
+
   makeSlot(kind, index, fixed = null) {
     const el = document.createElement('div');
     el.className = 'slot';
@@ -383,11 +454,14 @@ export class UI {
       const kind = el.dataset.kind, i = Number(el.dataset.index);
       if (kind === 'inv') this.renderStackInto(el, inv.slots[i]);
       else if (kind === 'craft') this.renderStackInto(el, this.craft.slots[i]);
+      else if (kind === 'container') this.renderStackInto(el, this.container.entity.slots[i]);
       else if (kind === 'result') {
         const r = this.craftResult();
         this.renderStackInto(el, r ? stack(r.id, r.count) : null);
       }
     });
+    this.containerSig = '';
+    this.refreshContainer();
     this.updateCursor();
     this.hotbarSig = '';
     this.updateHotbar(inv);
@@ -431,6 +505,7 @@ export class UI {
         if (kind === 'palette') id = Number(el.dataset.item);
         else if (kind === 'inv') id = this.game.inventory.slots[i]?.id;
         else if (kind === 'craft') id = this.craft.slots[i]?.id;
+        else if (kind === 'container') id = this.container?.entity.slots[i]?.id;
         else if (kind === 'result') id = this.craftResult()?.id;
       }
       if (id && !this.cursor) {
@@ -475,14 +550,71 @@ export class UI {
       }
     } else if (kind === 'result') {
       this.takeResult(shift);
+    } else if (kind === 'container') {
+      this.onContainerClick(i, button, shift);
     }
     this.game.sound.click();
     this.refreshInventory();
   }
 
+  onContainerClick(i, button, shift) {
+    const inv = this.game.inventory;
+    const slots = this.container.entity.slots;
+    const s = slots[i];
+    const furnace = this.container.type === 'furnace';
+    if (shift) {
+      if (!s) return;
+      const left = inv.add(s.id, s.count);
+      slots[i] = left ? stack(s.id, left) : null;
+      return;
+    }
+    if (furnace && i === 2) {
+      // Output slot: take only.
+      if (!s) return;
+      if (!this.cursor) {
+        this.cursor = s;
+        slots[2] = null;
+      } else if (this.cursor.id === s.id && this.cursor.count + s.count <= maxStack(s.id)) {
+        this.cursor.count += s.count;
+        slots[2] = null;
+      }
+      return;
+    }
+    if (furnace && i === 1 && this.cursor && fuelTime(this.cursor.id) <= 0) return;
+    this.cursor = clickSlot(slots, i, this.cursor, button);
+  }
+
+  // Moves as much of `s` as fits into slots[from..to). Returns the leftover.
+  moveInto(slots, s, from, to) {
+    const max = maxStack(s.id);
+    for (let k = from; k < to && s.count > 0; k++) {
+      const t = slots[k];
+      if (t && t.id === s.id && t.count < max) {
+        const n = Math.min(max - t.count, s.count);
+        t.count += n;
+        s.count -= n;
+      }
+    }
+    for (let k = from; k < to && s.count > 0; k++) {
+      if (!slots[k]) {
+        slots[k] = stack(s.id, s.count);
+        s.count = 0;
+      }
+    }
+    return s.count;
+  }
+
   quickMove(i) {
     const inv = this.game.inventory;
     const s = inv.slots[i];
+    const c = this.container;
+    if (c) {
+      if (c.type === 'chest') this.moveInto(c.entity.slots, s, 0, 27);
+      else if (SMELTING.has(s.id)) this.moveInto(c.entity.slots, s, 0, 1);
+      else if (fuelTime(s.id) > 0) this.moveInto(c.entity.slots, s, 1, 2);
+      if (s.count <= 0) inv.slots[i] = null;
+      return;
+    }
     const [from, to] = i < 9 ? [9, 36] : [0, 9];
     const max = maxStack(s.id);
     for (let k = from; k < to && s.count > 0; k++) {

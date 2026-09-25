@@ -1,7 +1,7 @@
 // The world: chunk storage, block access, light propagation and the chunk
 // streaming pipeline (generate -> light -> mesh).
 import { CHUNK_SIZE, CHUNK_HEIGHT, MAX_LIGHT } from './constants.js';
-import { B, LIGHT_ATTEN, LIGHT_EMIT } from './blocks.js';
+import { B, BLOCKS, LIGHT_ATTEN, LIGHT_EMIT } from './blocks.js';
 import { Chunk, CHUNK_STATE, chunkKey } from './chunk.js';
 import { WorldGenerator } from './worldgen.js';
 
@@ -17,12 +17,16 @@ const DIRS = [
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 export class World {
-  constructor({ seed, edits } = {}) {
+  constructor({ seed, edits, blockEntities } = {}) {
     this.seed = seed >>> 0;
     this.generator = new WorldGenerator(this.seed);
     this.chunks = new Map();
     // Player modifications: chunkKey -> Map(blockIndex -> blockId).
     this.edits = edits || new Map();
+    // Block entities (chest / furnace contents): "x,y,z" -> data.
+    this.blockEntities = blockEntities || new Map();
+    // Growing crops: "x,y,z" -> [x, y, z].
+    this.crops = new Map();
     this.onChunkUnload = null;
     this._lastKey = -1;
     this._lastChunk = null;
@@ -118,10 +122,28 @@ export class World {
     let edits = this.edits.get(c.key);
     if (!edits) this.edits.set(c.key, (edits = new Map()));
     edits.set(idx, id);
+    const key = `${x},${y},${z}`;
+    if (BLOCKS[id].crop !== undefined) this.crops.set(key, [x, y, z]);
+    else this.crops.delete(key);
 
     this.relight(x, y, z);
     this.markDirty(x, z);
     return true;
+  }
+
+  getBlockEntity(x, y, z) {
+    return this.blockEntities.get(`${x},${y},${z}`) || null;
+  }
+
+  setBlockEntity(x, y, z, data) {
+    this.blockEntities.set(`${x},${y},${z}`, data);
+  }
+
+  removeBlockEntity(x, y, z) {
+    const key = `${x},${y},${z}`;
+    const data = this.blockEntities.get(key) || null;
+    this.blockEntities.delete(key);
+    return data;
   }
 
   // --- Lighting ----------------------------------------------------------------------
@@ -327,6 +349,13 @@ export class World {
   generateChunk(cx, cz) {
     const c = new Chunk(cx, cz);
     this.generator.generate(c, this.edits.get(c.key));
+    for (let i = 0; i < c.blocks.length; i++) {
+      const id = c.blocks[i];
+      if (id >= B.WHEAT_0 && id <= B.WHEAT_3) {
+        const x = cx * CHUNK_SIZE + (i & 15), y = i >> 8, z = cz * CHUNK_SIZE + ((i >> 4) & 15);
+        this.crops.set(`${x},${y},${z}`, [x, y, z]);
+      }
+    }
     this.initChunkLight(c);
     c.state = CHUNK_STATE.GENERATED;
     this.chunks.set(c.key, c);

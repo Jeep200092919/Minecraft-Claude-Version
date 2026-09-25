@@ -32,10 +32,14 @@ CONTROLS
 WASD            move              Mouse          look around
 Space           jump / swim       Shift          sneak / fly down
 Ctrl or W-W     sprint            Space-Space    fly (Creative)
-Left click      break block       Right click    place block / use table
-Middle click    pick block        1-9 / wheel    choose hotbar slot
-E               inventory         F3             debug info
-Esc             pause menu        F1             hide HUD
+Left click      break / attack    Right click    place / open chest, furnace
+Hold right      eat food          Middle click   pick block
+1-9 / wheel     hotbar slot       F3             debug info
+E               inventory         Esc            pause menu
+F1              hide HUD
+
+Shaders (shadows, reflective water, bloom, god rays) are on by default;
+turn them off in Options -> Shaders if the game runs slowly.
 
 Your worlds are saved automatically in the browser.
 

@@ -1,6 +1,6 @@
 // Block-breaking debris: little textured squares that bounce on the ground.
 import { IS_SOLID, BLOCKS } from './blocks.js';
-import { blockFaceLayer } from './mesher.js';
+import { blockFaceLayer, textureLayer } from './mesher.js';
 
 const MAX_PARTICLES = 600;
 
@@ -9,16 +9,46 @@ export class Particles {
     this.list = [];
   }
 
-  _spawn(x, y, z, vx, vy, vz, layer) {
+  _spawn(x, y, z, vx, vy, vz, layer, opts = {}) {
     if (this.list.length >= MAX_PARTICLES) this.list.shift();
     this.list.push({
       x, y, z, vx, vy, vz, layer,
-      u: Math.floor(Math.random() * 12),
-      v: Math.floor(Math.random() * 12),
-      size: 0.07 + Math.random() * 0.06,
-      life: 0.45 + Math.random() * 0.6,
+      u: opts.u ?? Math.floor(Math.random() * 12),
+      v: opts.v ?? Math.floor(Math.random() * 12),
+      size: opts.size ?? 0.07 + Math.random() * 0.06,
+      life: opts.life ?? 0.45 + Math.random() * 0.6,
+      grav: opts.grav ?? 16,
       age: 0,
     });
+  }
+
+  // Rising smoke puffs (burning mobs, explosions). `shade` 0..1 picks light
+  // to dark puffs from the smoke sheet.
+  smoke(x, y, z, n = 6, spread = 0.4, size = 0.18, shade = 0.6) {
+    const layer = textureLayer('smoke');
+    for (let i = 0; i < n; i++) {
+      const cell = Math.min(15, Math.max(0, Math.round(shade * 15 + (Math.random() - 0.5) * 6)));
+      this._spawn(x + (Math.random() - 0.5) * spread * 2, y + (Math.random() - 0.5) * spread, z + (Math.random() - 0.5) * spread * 2,
+        (Math.random() - 0.5) * 0.6, 0.8 + Math.random(), (Math.random() - 0.5) * 0.6, layer,
+        { u: (cell & 3) * 4, v: (cell >> 2) * 4, size: size * (0.7 + Math.random() * 0.6), life: 0.8 + Math.random() * 0.8, grav: -1.5 });
+    }
+  }
+
+  // The puff when a mob dies.
+  poof(x, y, z) {
+    this.smoke(x, y, z, 14, 0.5, 0.16, 0.1);
+  }
+
+  // Explosion debris and smoke.
+  explosion(x, y, z, r) {
+    const layer = textureLayer('smoke');
+    for (let i = 0; i < 70; i++) {
+      const a = Math.random() * Math.PI * 2, b = Math.random() * Math.PI - Math.PI / 2;
+      const sp = 3 + Math.random() * 6;
+      const cell = Math.floor(Math.random() * 12);
+      this._spawn(x, y, z, Math.cos(a) * Math.cos(b) * sp, Math.sin(b) * sp + 2, Math.sin(a) * Math.cos(b) * sp, layer,
+        { u: (cell & 3) * 4, v: (cell >> 2) * 4, size: 0.25 + Math.random() * r * 0.1, life: 0.6 + Math.random() * 1.2, grav: -0.5 });
+    }
   }
 
   // A burst when a block breaks.
@@ -57,7 +87,8 @@ export class Particles {
         list.splice(i, 1);
         continue;
       }
-      p.vy -= 16 * dt;
+      p.vy -= p.grav * dt;
+      if (p.grav < 0) { p.vx *= Math.pow(0.3, dt); p.vz *= Math.pow(0.3, dt); p.vy *= Math.pow(0.5, dt); }
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt, nz = p.z + p.vz * dt;
       if (IS_SOLID[world.getBlock(Math.floor(p.x), Math.floor(ny - p.size / 2), Math.floor(p.z))]) {
         p.vy = 0;

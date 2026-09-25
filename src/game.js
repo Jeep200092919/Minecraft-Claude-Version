@@ -1,7 +1,7 @@
 // Game controller: owns the world, player, renderer and UI, runs the main
 // loop and implements the gameplay rules.
 import { CHUNK_SIZE, CHUNK_HEIGHT, DAY_LENGTH_TICKS, TICKS_PER_SECOND, GAME_NAME } from './constants.js';
-import { B, BLOCKS, ITEMS, IS_SOLID, isBlockItem, breakTime, blockDrop } from './blocks.js';
+import { B, I, BLOCKS, ITEMS, IS_SOLID, isBlockItem, breakTime, blockDrops, orientedBlock } from './blocks.js';
 import { World } from './world.js';
 import { buildChunkMesh } from './mesher.js';
 import { Renderer } from './renderer.js';
@@ -15,6 +15,11 @@ import { UI } from './ui.js';
 import { Particles } from './particles.js';
 import { hashString } from './noise.js';
 import { BIOME_NAMES } from './worldgen.js';
+import { EntityManager } from './entities.js';
+import { mobSkins } from './mobs.js';
+import { tickFurnaces, tickCrops, explode, newFurnace, newChest } from './gameplay.js';
+import { skyState } from './sky.js';
+import { villageLoot } from './villages.js';
 
 export const DEFAULT_SETTINGS = {
   renderDistance: 8,
@@ -25,9 +30,10 @@ export const DEFAULT_SETTINGS = {
   invertMouse: false,
   shaders: true,
   shadows: true,
+  music: 50,
 };
 
-const CREATIVE_HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.COBBLESTONE, B.PLANKS, B.LOG, B.GLASS, B.TORCH, B.BRICKS];
+const CREATIVE_HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.COBBLESTONE, B.PLANKS, B.LOG, B.GLASS, B.TORCH, B.LANTERN];
 const WALL_TORCH_BY_FACE = [B.WALL_TORCH_PX, B.WALL_TORCH_NX, B.TORCH, null, B.WALL_TORCH_PZ, B.WALL_TORCH_NZ];
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const PLANT_SOIL = new Set([B.GRASS, B.DIRT, B.SNOWY_GRASS]);
@@ -51,6 +57,13 @@ export class Game {
     this.input = new Input(canvas);
     this.ui = new UI(this);
     this.particles = new Particles();
+    this.entities = new EntityManager(this);
+    this.pendingEvents = [];
+    this.eating = null;
+    this.attackCooldown = 0;
+    this.targetMob = null;
+    const skins = mobSkins();
+    this.renderer.setEntitySkins(skins.pixels, skins.count);
     this.state = 'title';
     this.world = null;
     this.player = null;
@@ -104,6 +117,7 @@ export class Game {
   applySettings() {
     const s = this.settings;
     this.sound.setVolume(s.volume / 100);
+    this.sound.setMusicVolume((s.music ?? 50) / 100);
     this.renderer.fancy = !!s.shaders;
     this.renderer.shadowsEnabled = !!s.shadows;
     this.renderer.shadowDistance = Math.min(96, Math.max(48, s.renderDistance * 16));
@@ -121,6 +135,7 @@ export class Game {
 
   setWorld(world) {
     this.particles.clear();
+    this.entities?.clear();
     if (this.world) {
       this.renderer.dispose(this.world);
       this.world.dispose();
@@ -154,7 +169,7 @@ export class Game {
   startWorld(meta, saved) {
     this.meta = meta;
     this.creative = meta.mode === 'creative';
-    this.setWorld(new World({ seed: meta.seed, edits: saved?.edits }));
+    this.setWorld(new World({ seed: meta.seed, edits: saved?.edits, blockEntities: saved?.blockEntities }));
     this.player = new Player();
     if (saved?.player) {
       this.player.load(saved.player);
@@ -208,6 +223,7 @@ export class Game {
       inventory: this.inventory.toJSON(),
       ticks: this.ticks,
       edits: this.world.edits,
+      blockEntities: this.world.blockEntities,
     });
   }
 
@@ -257,13 +273,32 @@ export class Game {
     }
   }
 
-  openInventory(table = false) {
+  // mode: 'player', 'table' or { type: 'chest' | 'furnace', entity }.
+  openInventory(mode = 'player') {
     if (this.state !== 'playing') return;
     this.state = 'inventory';
     this.mining = null;
+    this.eating = null;
     this.input.unlock();
     this.input.reset();
-    this.ui.openInventory(table);
+    this.ui.openInventory(mode);
+  }
+
+  openContainer(x, y, z) {
+    const type = BLOCKS[this.world.getBlock(x, y, z)].container;
+    let be = this.world.getBlockEntity(x, y, z);
+    if (!be || be.type !== type) {
+      be = type === 'furnace' ? newFurnace() : newChest();
+      // Player-placed containers get their block entity when placed, so a
+      // missing one means a chest generated in a village: fill it with loot.
+      if (type === 'chest') be.slots = villageLoot(x, y, z);
+      this.world.setBlockEntity(x, y, z, be);
+    }
+    this.openInventory({ type, entity: be });
+  }
+
+  explode(x, y, z, power) {
+    explode(this, x, y, z, power);
   }
 
   closeInventory() {
@@ -294,7 +329,7 @@ export class Game {
     }
     if (this.state !== 'playing') return;
     if (code === 'Escape') this.pause();
-    else if (code === 'KeyE') this.openInventory(false);
+    else if (code === 'KeyE') this.openInventory('player');
     else if (code === 'F3') this.showDebug = !this.showDebug;
     else if (code === 'F1') {
       this.hideHud = !this.hideHud;
@@ -411,6 +446,19 @@ export class Game {
 
     this.world.update(pcx, pcz, rd, playing ? 6 : 12, this.buildMesh);
     if (this.state !== 'paused' && this.state !== 'inventory') this.particles.update(dt, this.world);
+    const simulate = this.state === 'playing' || this.state === 'inventory';
+    if (simulate && this.world.isReady(player.pos[0], player.pos[2])) {
+      this.entities.update(dt, skyState(this.ticks));
+      tickFurnaces(this, dt);
+      tickCrops(this, dt);
+    }
+    if (this.pendingEvents.length) {
+      const ev = this.pendingEvents;
+      this.pendingEvents = [];
+      this.handleEvents(ev);
+    }
+    if (this.state === 'inventory') this.ui.refreshContainer();
+    this.sound.updateMusic(dt);
 
     // Animations
     if (this.swing > 0) this.swing = Math.max(0, this.swing - dt / 0.3);
@@ -450,6 +498,8 @@ export class Game {
       placeAnim: this.placeAnim,
       light: [this.world.getSkyLight(ex, ey, ez), this.world.getBlockLight(ex, ey, ez)],
       particles: this.particles.list,
+      entities: this.entities.renderList(this.seconds),
+      eating: this.eating ? 1 : 0,
     });
 
     // HUD
@@ -494,8 +544,10 @@ export class Game {
       else if (e.type === 'splash') this.sound.splash();
       else if (e.type === 'land') this.sound.step(B.STONE);
       else if (e.type === 'death') {
+        if (this.state === 'inventory') this.ui.closeInventory();
         this.state = 'dead';
         this.mining = null;
+        this.eating = null;
         this.input.unlock();
         this.ui.show('death');
       }
@@ -508,15 +560,23 @@ export class Game {
     const input = this.input;
     const pressed = input.takePressedButtons();
     const p = this.player;
+    const inv = this.inventory;
     const reach = this.creative ? 5 : 4.5;
-    this.target = raycast((x, y, z) => this.world.getBlock(x, y, z), p.eye(), p.lookDir(), reach);
+    const eye = p.eye(), dir = p.lookDir();
+    this.target = raycast((x, y, z) => this.world.getBlock(x, y, z), eye, dir, reach);
     const t = this.target;
+    const mobHit = this.entities.raycast(eye, dir, this.creative ? 5 : 3.5);
+    this.targetMob = mobHit && (!t || mobHit.t < t.distance) ? mobHit.entity : null;
     this.useCooldown -= dt;
     this.breakDelay -= dt;
+    this.attackCooldown -= dt;
 
-    // Left button: break
+    // Left button: attack a mob, or break blocks.
     if (pressed.includes(0)) this.swing = 1;
-    if (input.buttons.has(0) && t) {
+    if (this.targetMob) {
+      this.mining = null;
+      if (pressed.includes(0) && this.attackCooldown <= 0) this.attack(this.targetMob);
+    } else if (input.buttons.has(0) && t) {
       if (this.creative) {
         if (pressed.includes(0) || this.breakDelay <= 0) {
           this.breakBlock(t.x, t.y, t.z);
@@ -527,7 +587,7 @@ export class Game {
         if (!m || m.x !== t.x || m.y !== t.y || m.z !== t.z || m.id !== t.id) {
           this.mining = { x: t.x, y: t.y, z: t.z, id: t.id, progress: 0, soundTimer: 0 };
         }
-        const bt = breakTime(t.id, this.inventory.selectedId);
+        const bt = breakTime(t.id, inv.selectedId);
         const mm = this.mining;
         if (bt !== Infinity) mm.progress += bt === 0 ? 1 : dt / bt;
         mm.soundTimer -= dt;
@@ -539,6 +599,7 @@ export class Game {
         if (this.swing <= 0) this.swing = 1;
         if (mm.progress >= 1) {
           this.breakBlock(t.x, t.y, t.z);
+          p.addExhaustion(0.005, this.creative);
           this.mining = null;
           this.breakDelay = 0.25;
         }
@@ -547,17 +608,66 @@ export class Game {
       this.mining = null;
     }
 
-    // Right button: use / place
-    if (pressed.includes(2) || (input.buttons.has(2) && this.useCooldown <= 0)) {
-      if (t) this.useBlock(t);
-      this.useCooldown = pressed.includes(2) ? 0.3 : 0.22;
+    // Right button: eat (hold), use or place.
+    const held = inv.selectedStack;
+    const heldItem = held ? ITEMS.get(held.id) : null;
+    const interactive = t && !p.sneaking && this.isInteractive(t.id, heldItem);
+    if (input.buttons.has(2) && heldItem?.food && !interactive && p.hunger < 20) {
+      const e = this.eating;
+      if (!e || e.slot !== inv.selected || e.id !== held.id) this.eating = { slot: inv.selected, id: held.id, time: 0, sound: 0 };
+      const eat = this.eating;
+      eat.time += dt;
+      eat.sound -= dt;
+      if (eat.sound <= 0) {
+        this.sound.eat();
+        eat.sound = 0.21;
+      }
+      if (eat.time >= 1.6) {
+        p.eat(heldItem.food);
+        if (!this.creative) inv.take(inv.selected, 1);
+        this.sound.burp();
+        this.eating = null;
+        this.useCooldown = 0.3;
+      }
+    } else {
+      this.eating = null;
+      if (pressed.includes(2) || (input.buttons.has(2) && this.useCooldown <= 0)) {
+        if (t && !this.targetMob) this.useBlock(t);
+        this.useCooldown = pressed.includes(2) ? 0.3 : 0.22;
+      }
     }
 
     // Middle button: pick block
     if (pressed.includes(1) && t) {
-      const id = BLOCKS[t.id].shape === 'torch' ? B.TORCH : t.id;
-      if (this.inventory.pick(id, this.creative)) this.ui.showItemName(ITEMS.get(id)?.displayName);
+      const b = BLOCKS[t.id];
+      const id = b.shape === 'torch' ? B.TORCH : t.id === B.HANGING_LANTERN ? B.LANTERN : (b.baseId ?? t.id);
+      if (inv.pick(id, this.creative)) this.ui.showItemName(ITEMS.get(id)?.displayName);
     }
+  }
+
+  isInteractive(id, heldItem) {
+    const b = BLOCKS[id];
+    return id === B.CRAFTING_TABLE || !!b.container || (id === B.TNT && heldItem?.id === I.FLINT_AND_STEEL);
+  }
+
+  attack(mob) {
+    const p = this.player;
+    const item = ITEMS.get(this.inventory.selectedId);
+    let dmg = item ? item.damage : 1;
+    if (!p.onGround && p.vel[1] < -1 && !p.flying) {
+      dmg *= 1.5; // critical hit while falling
+      this.particles.smoke(mob.pos[0], mob.pos[1] + mob.h, mob.pos[2], 4, 0.3, 0.06, 0.1);
+    }
+    const wasAlive = !mob.dead;
+    if (mob.hurt(dmg, p.pos, this.entities) && wasAlive && mob.dead && !this.creative) {
+      for (const [id, min, max] of mob.def.drops) {
+        const n = min + Math.floor(Math.random() * (max - min + 1));
+        if (n > 0 && this.inventory.add(id, n) < n) this.sound.pop();
+      }
+    }
+    p.addExhaustion(0.1, this.creative);
+    this.attackCooldown = 0.25;
+    this.swing = 1;
   }
 
   breakBlock(x, y, z) {
@@ -566,14 +676,19 @@ export class Game {
     if (!this.world.setBlock(x, y, z, B.AIR)) return;
     this.sound.breakBlock(id);
     this.particles.burst(x, y, z, id);
+    const be = BLOCKS[id].container ? this.world.removeBlockEntity(x, y, z) : null;
+    if (be) for (const s of be.slots) if (s) this.inventory.add(s.id, s.count);
     if (!this.creative) this.giveDrop(id);
     this.blockUpdates(x, y, z);
     this.flowWater(x, y, z);
   }
 
   giveDrop(id) {
-    const drop = blockDrop(id, this.inventory.selectedId);
-    if (drop && this.inventory.add(drop, 1) === 0) this.sound.pop();
+    let got = false;
+    for (const [item, n] of blockDrops(id, this.inventory.selectedId)) {
+      if (this.inventory.add(item, n) < n) got = true;
+    }
+    if (got) this.sound.pop();
   }
 
   canStay(id, x, y, z) {
@@ -592,16 +707,57 @@ export class Game {
       const [ax, ay, az] = b.attach;
       return IS_SOLID[w.getBlock(x + ax, y + ay, z + az)] === 1;
     }
+    if (b.support === 'lantern') return IS_SOLID[w.getBlock(x, y - 1, z)] === 1;
+    if (b.support === 'hanging') return IS_SOLID[w.getBlock(x, y + 1, z)] === 1 || w.getBlock(x, y + 1, z) === B.OAK_FENCE;
+    if (b.support === 'farmland') return w.getBlock(x, y - 1, z) === B.FARMLAND;
     return true;
   }
 
   useBlock(t) {
-    if (t.id === B.CRAFTING_TABLE && !this.player.sneaking) {
-      this.openInventory(true);
+    const w = this.world;
+    const p = this.player;
+    const inv = this.inventory;
+    const s = inv.selectedStack;
+    const it = s ? ITEMS.get(s.id) : null;
+    if (!p.sneaking) {
+      if (t.id === B.CRAFTING_TABLE) {
+        this.openInventory('table');
+        return;
+      }
+      if (BLOCKS[t.id].container) {
+        this.openContainer(t.x, t.y, t.z);
+        return;
+      }
+    }
+    if (t.id === B.TNT && it?.id === I.FLINT_AND_STEEL) {
+      w.setBlock(t.x, t.y, t.z, B.AIR);
+      this.entities.primeTNT(t.x, t.y, t.z, 4);
+      this.swing = 1;
       return;
     }
-    const s = this.inventory.selectedStack;
-    if (!s || !isBlockItem(s.id)) return;
+    if (!it) return;
+    const above = w.getBlock(t.x, t.y + 1, t.z);
+    if (it.spawns) {
+      const x = t.x + t.normal[0], y = t.y + t.normal[1], z = t.z + t.normal[2];
+      this.entities.spawn(it.spawns, x + 0.5, y, z + 0.5);
+      if (!this.creative) inv.take(inv.selected, 1);
+      this.swing = 1;
+      return;
+    }
+    if (it.tool?.type === 'hoe' && t.face === 2 && above === B.AIR && [B.GRASS, B.DIRT, B.DIRT_PATH].includes(t.id)) {
+      w.setBlock(t.x, t.y, t.z, B.FARMLAND);
+      this.sound.place(B.DIRT);
+      this.swing = 1;
+      return;
+    }
+    if (it.plants && t.id === B.FARMLAND && t.face === 2 && above === B.AIR) {
+      w.setBlock(t.x, t.y + 1, t.z, it.plants);
+      if (!this.creative) inv.take(inv.selected, 1);
+      this.sound.place(B.TALL_GRASS);
+      this.swing = 1;
+      return;
+    }
+    if (!isBlockItem(s.id)) return;
     let id = s.id;
     let x, y, z, face = t.face;
     if (BLOCKS[t.id].replaceable) {
@@ -610,15 +766,27 @@ export class Game {
       x = t.x + t.normal[0]; y = t.y + t.normal[1]; z = t.z + t.normal[2];
     }
     if (y < 0 || y >= CHUNK_HEIGHT) return;
-    if (!BLOCKS[this.world.getBlock(x, y, z)].replaceable) return;
+    if (!BLOCKS[w.getBlock(x, y, z)].replaceable) return;
     if (BLOCKS[id].shape === 'torch') {
       id = WALL_TORCH_BY_FACE[face];
       if (!id) return;
     }
+    if (id === B.LANTERN && face === 3) id = B.HANGING_LANTERN;
+    const b = BLOCKS[id];
+    if (b.facing >= 0 && b.baseId !== undefined) {
+      const d = p.lookDir();
+      const look = Math.abs(d[0]) > Math.abs(d[2]) ? (d[0] > 0 ? 0 : 1) : (d[2] > 0 ? 2 : 3);
+      id = orientedBlock(b.baseId, b.shape === 'stairs' ? look : [1, 0, 3, 2][look]);
+    }
     if (!this.canStay(id, x, y, z)) return;
-    if (BLOCKS[id].solid && this.player.intersectsBlock(x, y, z)) return;
-    if (!this.world.setBlock(x, y, z, id)) return;
-    if (!this.creative) this.inventory.take(this.inventory.selected, 1);
+    if (BLOCKS[id].solid && p.intersectsBlock(x, y, z)) return;
+    for (const e of this.entities.list) {
+      if (e.kind === 'mob' && BLOCKS[id].solid && Math.abs(e.pos[0] - x - 0.5) < e.hw + 0.5 && Math.abs(e.pos[2] - z - 0.5) < e.hw + 0.5 && e.pos[1] < y + 1 && e.pos[1] + e.h > y) return;
+    }
+    if (!w.setBlock(x, y, z, id)) return;
+    if (BLOCKS[id].container === 'furnace') w.setBlockEntity(x, y, z, newFurnace());
+    else if (BLOCKS[id].container === 'chest') w.setBlockEntity(x, y, z, newChest());
+    if (!this.creative) inv.take(inv.selected, 1);
     this.sound.place(id);
     this.swing = 1;
     this.placeAnim = 1;
@@ -708,7 +876,7 @@ export class Game {
       `Light: sky ${this.world.getSkyLight(bx, ey, bz)}, block ${this.world.getBlockLight(bx, ey, bz)}`,
       `Chunks: ${this.world.chunks.size} loaded, ${s.drawn}/${s.chunks} drawn, ${(s.quads / 1000).toFixed(0)}k quads`,
       `Seed: ${this.world.seed}  Time: ${String(day).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
-      `Mode: ${this.creative ? 'Creative' : 'Survival'}${p.flying ? ' (flying)' : ''}`,
+      `Mode: ${this.creative ? 'Creative' : 'Survival'}${p.flying ? ' (flying)' : ''}  Hunger: ${p.hunger}  Mobs: ${this.entities.list.length}`,
       t ? `Looking at: ${BLOCKS[t.id].displayName} (${t.x}, ${t.y}, ${t.z})` : 'Looking at: —',
     ].join('\n');
   }

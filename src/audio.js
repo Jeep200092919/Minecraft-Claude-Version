@@ -123,4 +123,177 @@ export class Sound {
   click() {
     if (this._ready()) this._tone(900, 0.05, 0.15, 0, 600, 'triangle');
   }
+
+  // A filtered oscillator voice with an optional pitch glide and tremolo.
+  _voice(type, f0, f1, dur, gain, { filter = 900, trem = 0, delay = 0 } = {}) {
+    const ctx = this.ctx;
+    const t = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = filter;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(gain, t + 0.04);
+    env.gain.setValueAtTime(gain, t + dur * 0.7);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = osc.connect(lp).connect(env);
+    if (trem) {
+      const am = ctx.createGain();
+      const lfo = ctx.createOscillator();
+      const depth = ctx.createGain();
+      lfo.frequency.value = trem;
+      depth.gain.value = 0.5;
+      am.gain.value = 0.5;
+      lfo.connect(depth).connect(am.gain);
+      node = node.connect(am);
+      lfo.start(t);
+      lfo.stop(t + dur + 0.05);
+    }
+    node.connect(this.master);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  }
+
+  // Mob vocalizations: kind is 'idle', 'hurt' or 'death'.
+  mob(sound, kind = 'idle') {
+    if (!this._ready()) return;
+    const hurt = kind !== 'idle';
+    const p = (kind === 'hurt' ? 1.25 : kind === 'death' ? 0.8 : 1) * (0.9 + Math.random() * 0.2);
+    const g = 0.22;
+    switch (sound) {
+      case 'pig':
+        this._voice('square', 190 * p, 150 * p, 0.14, g, { filter: 700 });
+        if (!hurt) this._voice('square', 170 * p, 130 * p, 0.12, g * 0.8, { filter: 700, delay: 0.18 });
+        break;
+      case 'cow':
+        this._voice('sawtooth', 115 * p, 92 * p, hurt ? 0.35 : 0.9, g, { filter: 520, trem: 6 });
+        break;
+      case 'sheep':
+        this._voice('sawtooth', 280 * p, 250 * p, hurt ? 0.3 : 0.6, g * 0.8, { filter: 1100, trem: 28 });
+        break;
+      case 'chicken':
+        for (let i = 0; i < (hurt ? 2 : 3); i++) this._voice('triangle', (1100 + Math.random() * 300) * p, 800 * p, 0.07, g * 0.7, { filter: 3000, delay: i * 0.11 });
+        break;
+      case 'zombie':
+        this._voice('sawtooth', 95 * p, 70 * p, hurt ? 0.4 : 1.1, g * 1.1, { filter: 380, trem: 9 });
+        this._burst('gravel', 0.5, 0.15, 0.5);
+        break;
+      case 'villager':
+        this._voice('sine', 230 * p, 180 * p, 0.4, g, { filter: 900 });
+        break;
+      case 'creeper':
+        if (hurt) this._burst('sand', 0.25, 0.3, 0.8);
+        break;
+    }
+  }
+
+  hiss() {
+    if (!this._ready()) return;
+    this._burst('sand', 1.5, 0.45, 1.4);
+  }
+
+  explosion() {
+    if (!this._ready()) return;
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.playbackRate.value = 0.5;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 500;
+    const env = ctx.createGain();
+    const t = ctx.currentTime;
+    env.gain.setValueAtTime(1.2, t);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+    src.connect(lp).connect(env).connect(this.master);
+    src.start(t);
+    src.stop(t + 1.9);
+    this._tone(60, 0.8, 0.9, 0, 30);
+  }
+
+  eat() {
+    if (this._ready()) this._burst('gravel', 0.12, 0.35, 1.3);
+  }
+
+  burp() {
+    if (this._ready()) this._voice('sawtooth', 160, 95, 0.35, 0.25, { filter: 500 });
+  }
+
+  // --- Ambient music: soft generative piano phrases -------------------------------
+
+  setMusicVolume(v) {
+    this.musicVolume = v;
+    if (this.musicGain) this.musicGain.gain.value = v * 0.8;
+  }
+
+  _musicBus() {
+    if (this.musicGain) return this.musicGain;
+    const ctx = this.ctx;
+    this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = (this.musicVolume ?? 0.5) * 0.8;
+    // A generated impulse response gives the notes a roomy reverb.
+    const len = ctx.sampleRate * 3;
+    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+    }
+    const verb = ctx.createConvolver();
+    verb.buffer = ir;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.55;
+    this.musicDry = ctx.createGain();
+    this.musicDry.connect(this.musicGain);
+    this.musicDry.connect(verb).connect(wet).connect(this.musicGain);
+    this.musicGain.connect(this.ctx.destination);
+    return this.musicGain;
+  }
+
+  _note(freq, t, dur, gain) {
+    const ctx = this.ctx;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(gain, t + 0.02);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2400;
+    for (const [mult, g, type] of [[1, 1, 'triangle'], [2, 0.25, 'sine'], [3, 0.08, 'sine']]) {
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = freq * mult;
+      const og = ctx.createGain();
+      og.gain.value = g;
+      osc.connect(og).connect(lp);
+      osc.start(t);
+      osc.stop(t + dur + 0.05);
+    }
+    lp.connect(env).connect(this.musicDry);
+  }
+
+  // Called every frame; occasionally plays a calm phrase.
+  updateMusic(dt) {
+    if (!this.ctx || this.ctx.state !== 'running' || !(this.musicVolume > 0)) return;
+    this._musicBus();
+    this.musicTimer = (this.musicTimer ?? 8) - dt;
+    if (this.musicTimer > 0) return;
+    this.musicTimer = 50 + Math.random() * 70;
+    const roots = [261.63, 220.0, 196.0, 174.61];
+    const root = roots[Math.floor(Math.random() * roots.length)];
+    const scale = [0, 2, 4, 7, 9, 12, 14, 16, 19];
+    const hz = (semi) => root * Math.pow(2, semi / 12);
+    let t = this.ctx.currentTime + 0.2;
+    const notes = 8 + Math.floor(Math.random() * 10);
+    let idx = Math.floor(Math.random() * 4);
+    for (let i = 0; i < notes; i++) {
+      idx = Math.max(0, Math.min(scale.length - 1, idx + Math.floor(Math.random() * 5) - 2));
+      this._note(hz(scale[idx]), t, 2.8, 0.14);
+      if (Math.random() < 0.3) this._note(hz(scale[idx] - 12), t, 3.5, 0.09);
+      t += [0.45, 0.6, 0.9, 1.2][Math.floor(Math.random() * 4)];
+    }
+  }
 }

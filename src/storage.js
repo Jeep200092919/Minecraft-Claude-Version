@@ -66,6 +66,27 @@ export function decodeEdits(obj) {
   return edits;
 }
 
+// Block entities: Map("x,y,z" -> { type, slots, ...numbers }) <-> JSON array.
+export function encodeBlockEntities(map) {
+  const out = [];
+  for (const [key, be] of map || []) {
+    out.push([key, { ...be, slots: be.slots.map((s) => (s ? [s.id, s.count] : 0)) }]);
+  }
+  return out;
+}
+
+export function decodeBlockEntities(list) {
+  const map = new Map();
+  if (!Array.isArray(list)) return map;
+  for (const entry of list) {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !entry[1] || !Array.isArray(entry[1].slots)) continue;
+    const be = { ...entry[1] };
+    be.slots = be.slots.map((s) => (Array.isArray(s) && s[1] > 0 ? { id: s[0], count: s[1] } : null));
+    map.set(entry[0], be);
+  }
+  return map;
+}
+
 export class Storage {
   constructor(backend) {
     this.backend = backend || Storage.defaultBackend();
@@ -130,10 +151,10 @@ export class Storage {
   loadWorld(id) {
     const data = this._get(`world:${id}`, null);
     if (!data) return null;
-    return { ...data, edits: decodeEdits(data.edits) };
+    return { ...data, edits: decodeEdits(data.edits), blockEntities: decodeBlockEntities(data.blockEntities) };
   }
 
-  saveWorld(meta, { player, inventory, ticks, edits }) {
+  saveWorld(meta, { player, inventory, ticks, edits, blockEntities }) {
     meta.lastPlayed = Date.now();
     const worlds = this.listWorlds().filter((w) => w.id !== meta.id);
     worlds.push(meta);
@@ -144,6 +165,7 @@ export class Storage {
       inventory,
       ticks,
       edits: encodeEdits(edits),
+      blockEntities: encodeBlockEntities(blockEntities),
     });
   }
 

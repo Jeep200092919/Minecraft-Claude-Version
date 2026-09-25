@@ -5,6 +5,7 @@ import { CHUNK_SIZE, CHUNK_HEIGHT, SEA_LEVEL } from './constants.js';
 import { B } from './blocks.js';
 import { SimplexNoise, hashCoords, rngFor, mulberry32 } from './noise.js';
 import { smoothstep } from './math.js';
+import { Villages } from './villages.js';
 
 export const BIOME = {
   OCEAN: 0,
@@ -43,6 +44,13 @@ export class WorldGenerator {
     this.caveB = n(8);
     this.cheeseNoise = n(9);
     this.surfaceNoise = n(10);
+    this.villages = new Villages(this);
+  }
+
+  // Centre of the closest village within ~200 blocks, or null.
+  nearestVillage(x, z) {
+    const v = this.villages.nearest(x, z);
+    return v ? { x: v.x, z: v.z, y: v.y } : null;
   }
 
   // Terrain height (y of the top solid block) and biome of a world column.
@@ -147,6 +155,7 @@ export class WorldGenerator {
     this.placeOres(chunk);
     this.decorate(chunk, cols);
     this.placeTrees(chunk);
+    this.villages.place(chunk);
 
     if (edits) for (const [idx, id] of edits) blocks[idx] = id;
     chunk.computeHeightmap();
@@ -270,6 +279,7 @@ export class WorldGenerator {
       const wx = cx * 16 + lx, wz = cz * 16 + lz;
       const col = this.column(wx, wz);
       if (col.height <= SEA_LEVEL || col.height > 104) continue;
+      if (this.villages.blocksTree(wx, wz)) continue;
       let type = null;
       if (col.biome === BIOME.FOREST) type = roll < 0.3 ? 'birch' : 'oak';
       else if (col.biome === BIOME.PLAINS) type = 'oak';

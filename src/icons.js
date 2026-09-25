@@ -91,7 +91,20 @@ const BUBBLE = [
   '..ooooo..',
 ];
 
-function sprite(pattern, colors, halfColors = null, scale = 2) {
+const DRUMSTICK = [
+  '....oooo.',
+  '...offffo',
+  '..offhhfo',
+  '..ofhhffo',
+  '..offfffo',
+  '.owoffoo.',
+  'owwoooo..',
+  'owo......',
+  '.o.......',
+];
+
+// halfColors replaces the right half (or the left half when halfLeft is set).
+function sprite(pattern, colors, halfColors = null, scale = 2, halfLeft = false) {
   const w = 9, h = pattern.length;
   const c = document.createElement('canvas');
   c.width = w * scale;
@@ -101,7 +114,7 @@ function sprite(pattern, colors, halfColors = null, scale = 2) {
     for (let x = 0; x < Math.min(w, row.length); x++) {
       const ch = row[x];
       if (ch === '.') continue;
-      const pal = halfColors && x >= 5 ? halfColors : colors;
+      const pal = halfColors && (halfLeft ? x < 4 : x >= 5) ? halfColors : colors;
       ctx.fillStyle = pal[ch];
       ctx.fillRect(x * scale, y * scale, scale, scale);
     }
@@ -114,11 +127,16 @@ export function hudIcons() {
   if (hudSprites) return hudSprites;
   const full = { o: '#1c0404', f: '#d4161a', h: '#ff9a9a' };
   const empty = { o: '#1c0404', f: '#3a1414', h: '#4a1c1c' };
+  const foodFull = { o: '#2b1206', f: '#b0572a', h: '#e3955b', w: '#ece4d4' };
+  const foodEmpty = { o: '#2b1206', f: '#3b2012', h: '#4a2a18', w: '#4a4038' };
   hudSprites = {
     heartFull: sprite(HEART, full),
     heartHalf: sprite(HEART, full, empty),
     heartEmpty: sprite(HEART, empty),
     bubble: sprite(BUBBLE, { o: '#1f4a9a', f: '#7fb6ff', h: '#ffffff' }),
+    foodFull: sprite(DRUMSTICK, foodFull),
+    foodHalf: sprite(DRUMSTICK, foodFull, foodEmpty, 2, true),
+    foodEmpty: sprite(DRUMSTICK, foodEmpty),
   };
   return hudSprites;
 }
