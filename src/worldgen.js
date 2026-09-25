@@ -6,6 +6,7 @@ import { B } from './blocks.js';
 import { SimplexNoise, hashCoords, rngFor, mulberry32 } from './noise.js';
 import { smoothstep } from './math.js';
 import { Villages } from './villages.js';
+import { Structures } from './structures.js';
 
 export const BIOME = {
   OCEAN: 0,
@@ -55,6 +56,7 @@ export class WorldGenerator {
     this.cheeseNoise = n(9);
     this.surfaceNoise = n(10);
     this.villages = new Villages(this);
+    this.structures = new Structures(this);
   }
 
   // Centre of the closest village within ~200 blocks, or null.
@@ -168,6 +170,7 @@ export class WorldGenerator {
     this.decorate(chunk, cols);
     this.placeTrees(chunk);
     this.villages.place(chunk);
+    this.structures.place(chunk);
 
     if (edits) for (const [idx, id] of edits) blocks[idx] = id;
     chunk.computeHeightmap();

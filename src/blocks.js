@@ -198,6 +198,7 @@ export const B = {
   LAPIS_BLOCK: 204,
   REDSTONE_BLOCK: 205,
   QUARTZ_BLOCK: 206,
+  STONE_PRESSURE_PLATE: 207,
 };
 // Inventory items for orientable blocks.
 B.FURNACE = B.FURNACE_PZ;
@@ -319,6 +320,12 @@ export const I = {
   RAW_RABBIT: 380,
   COOKED_RABBIT: 381,
   INK_SAC: 382,
+  GUARDIAN_SPAWN_EGG: 383,
+  PRISMARINE_SHARD: 384,
+  PRISMARINE_CRYSTALS: 385,
+  RAW_COD: 386,
+  COOKED_COD: 387,
+  COD_SPAWN_EGG: 388,
 };
 export const ARMOR_MATERIALS = ['leather', 'iron', 'golden', 'diamond'];
 export const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
@@ -662,6 +669,10 @@ def(B.EMERALD_BLOCK, 'emerald_block', 'Block of Emerald', 'emerald_block', { ...
 def(B.LAPIS_BLOCK, 'lapis_block', 'Block of Lapis Lazuli', 'lapis_block', { ...metal, harvestTier: 2 });
 def(B.REDSTONE_BLOCK, 'redstone_block', 'Block of Redstone', 'redstone_block', { ...metal, lightEmit: 0 });
 def(B.QUARTZ_BLOCK, 'quartz_block', 'Block of Quartz', { top: 'quartz_top', side: 'quartz_side' }, { hardness: 0.8, tool: 'pickaxe', harvestTier: 1 });
+def(B.STONE_PRESSURE_PLATE, 'stone_pressure_plate', 'Stone Pressure Plate', 'smooth_stone', {
+  shape: 'box', box: [1, 0, 1, 15, 1, 15], solid: false, opaque: false, hardness: 0.5, tool: 'pickaxe', support: 'ground',
+  selectionBox: [1 / 16, 0, 1 / 16, 15 / 16, 1 / 16, 15 / 16], collision: [], plate: true,
+});
 
 // Fill any unused ids with inert air-like entries so lookups never fail.
 for (let i = 0; i < 256; i++) {
@@ -763,13 +774,17 @@ for (const mob of ['pig', 'cow', 'sheep', 'chicken', 'zombie', 'creeper', 'villa
   const label = mob[0].toUpperCase() + mob.slice(1);
   item(I[`${mob.toUpperCase()}_SPAWN_EGG`], `${mob}_spawn_egg`, `${label} Spawn Egg`, { spawns: mob });
 }
-for (const mob of ['skeleton', 'spider', 'enderman', 'slime', 'wolf', 'iron_golem', 'squid', 'bat', 'rabbit']) {
+for (const mob of ['skeleton', 'spider', 'enderman', 'slime', 'wolf', 'iron_golem', 'squid', 'bat', 'rabbit', 'guardian', 'cod']) {
   const label = mob.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
   item(I[`${mob.toUpperCase()}_SPAWN_EGG`], `${mob}_spawn_egg`, `${label} Spawn Egg`, { spawns: mob });
 }
 item(I.RAW_RABBIT, 'raw_rabbit', 'Raw Rabbit', food(3, 1.8));
 item(I.COOKED_RABBIT, 'cooked_rabbit', 'Cooked Rabbit', food(5, 6));
 item(I.INK_SAC, 'ink_sac', 'Ink Sac');
+item(I.PRISMARINE_SHARD, 'prismarine_shard', 'Prismarine Shard');
+item(I.PRISMARINE_CRYSTALS, 'prismarine_crystals', 'Prismarine Crystals');
+item(I.RAW_COD, 'raw_cod', 'Raw Cod', food(2, 0.4));
+item(I.COOKED_COD, 'cooked_cod', 'Cooked Cod', food(5, 6));
 item(I.BOW, 'bow', 'Bow', { maxStack: 1, durability: 384, bow: true });
 item(I.ARROW, 'arrow', 'Arrow');
 item(I.BUCKET, 'bucket', 'Bucket', { maxStack: 16, bucket: 'empty' });
@@ -920,6 +935,7 @@ export const SMELTING = new Map([
   [I.RAW_CHICKEN, I.COOKED_CHICKEN],
   [I.RAW_MUTTON, I.COOKED_MUTTON],
   [I.RAW_RABBIT, I.COOKED_RABBIT],
+  [I.RAW_COD, I.COOKED_COD],
 ]);
 export const SMELT_TIME = 10;
 
@@ -961,6 +977,11 @@ shaped(['PP', 'PP'], { P: ANY_PLANKS }, B.CRAFTING_TABLE);
 shaped(['C', 'S'], { C: [I.COAL, I.CHARCOAL], S: I.STICK }, B.TORCH, 4);
 shaped(['SS', 'SS'], { S: B.SAND }, B.SANDSTONE);
 shaped(['SS', 'SS'], { S: B.STONE }, B.STONE_BRICKS, 4);
+shaped(['SS'], { S: B.STONE }, B.STONE_PRESSURE_PLATE);
+shaped(['SS', 'SS'], { S: I.PRISMARINE_SHARD }, B.PRISMARINE);
+shaped(['SSS', 'SSS', 'SSS'], { S: I.PRISMARINE_SHARD }, B.PRISMARINE_BRICKS);
+shaped(['SSS', 'SIS', 'SSS'], { S: I.PRISMARINE_SHARD, I: I.INK_SAC }, B.DARK_PRISMARINE);
+shaped(['SCS', 'CCC', 'SCS'], { S: I.PRISMARINE_SHARD, C: I.PRISMARINE_CRYSTALS }, B.SEA_LANTERN);
 shaped(['CCC', 'C C', 'CCC'], { C: COBBLES }, B.FURNACE);
 shaped(['PPP', 'P P', 'PPP'], { P: ANY_PLANKS }, B.CHEST);
 shaped(['PSP', 'PSP'], { P: ANY_PLANKS, S: I.STICK }, B.OAK_FENCE, 3);

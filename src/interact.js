@@ -90,8 +90,7 @@ export function useOnBlock(game, t) {
     if (tb.bed) { game.trySleep(t.x, t.y, t.z); return true; }
   }
   if (t.id === B.TNT && it?.id === I.FLINT_AND_STEEL) {
-    w.setBlock(t.x, t.y, t.z, B.AIR);
-    game.entities.primeTNT(t.x, t.y, t.z, 4);
+    game.igniteTNT(t.x, t.y, t.z, 4);
     game.damageHeld(1);
     game.swing = 1;
     return true;

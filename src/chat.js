@@ -2,6 +2,7 @@
 import { ITEMS } from './blocks.js';
 import { MOBS } from './mobs.js';
 import { maxStack } from './inventory.js';
+import { STRUCTURE_TYPES } from './structures.js';
 
 const $ = (id) => document.getElementById(id);
 const VISIBLE_SECONDS = 10;
@@ -110,7 +111,7 @@ export class Chat {
     // the player who runs the world simulation.
     switch ((cmd || '').toLowerCase()) {
       case 'help':
-        this.add('Commands: /time set <day|noon|night|midnight|n>, /time add <n>, /weather <clear|rain|thunder>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <mob> [slime size], /kill, /spawnpoint, /xp <n>, /clear, /seed', '#aaaaaa');
+        this.add('Commands: /time set <day|noon|night|midnight|n>, /time add <n>, /weather <clear|rain|thunder>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <mob> [slime size], /kill, /spawnpoint, /xp <n>, /clear, /locate <structure>, /seed', '#aaaaaa');
         return;
       case 'time': {
         const names = { day: 1000, noon: 6000, sunset: 12000, night: 13000, midnight: 18000, sunrise: 23000 };
@@ -194,6 +195,18 @@ export class Chat {
         g.ui.hotbarSig = '';
         this.add('Cleared your inventory', '#aaaaaa');
         return;
+      case 'locate': {
+        const what = (args[0] || '').toLowerCase().replace(/^minecraft:/, '');
+        const gen = g.world.generator;
+        let s = null;
+        if (what === 'village') s = gen.villages.nearest(p.pos[0], p.pos[2], 2000);
+        else if (STRUCTURE_TYPES.includes(what)) s = gen.structures.nearest(what, p.pos[0], p.pos[2]);
+        else return this.error(`Usage: /locate <${['village', ...STRUCTURE_TYPES].join('|')}>`);
+        if (!s) return this.error(`Could not find a ${what.replace(/_/g, ' ')} nearby`);
+        const d = Math.round(Math.hypot(s.x - p.pos[0], s.z - p.pos[2]));
+        this.add(`The nearest ${what.replace(/_/g, ' ')} is at [${s.x}, ~, ${s.z}] (${d} blocks away)`, '#aaaaaa');
+        return;
+      }
       case 'seed':
         this.add(`Seed: ${g.world.seed}`, '#aaaaaa');
         return;

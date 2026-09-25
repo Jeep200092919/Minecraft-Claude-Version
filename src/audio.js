@@ -311,6 +311,10 @@ export class Sound {
       case 'bat':
         for (let i = 0; i < 2; i++) this._tone((3200 + Math.random() * 800) * p, 0.05, g * 0.35, i * 0.09, 2400 * p, 'triangle');
         break;
+      case 'guardian':
+        this._voice('sine', 320 * p, hurt ? 180 : 240 * p, hurt ? 0.3 : 0.6, g * 0.7, { filter: 900, trem: 7 });
+        this._burst('wool', 0.2, 0.2, 0.7);
+        break;
       case 'rabbit':
         if (hurt) this._tone(1300 * p, 0.12, g * 0.5, 0, 900 * p, 'triangle');
         break;

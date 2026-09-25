@@ -155,3 +155,15 @@ test('tamed wolves defend their owner', () => {
   E.damagePlayer('player', 2, z.pos, z);
   assert.equal(w.target, z);
 });
+
+test('guardians charge a laser at players in the water', () => {
+  const g = fakeGame();
+  const E = g.entities;
+  for (let x = -6; x <= 10; x++) for (let z = -4; z <= 4; z++) for (let y = 61; y <= 66; y++) g.world.setBlock(x, y, z, B.WATER);
+  g.player.pos = [0.5, 61, 0.5];
+  const guardian = E.spawn('guardian', 7.5, 62, 0.5);
+  run(g, 1);
+  assert.deepEqual(guardian.target, { ref: 'player' });
+  for (let i = 0; i < 6 && g.player.health === 20; i++) run(g, 1);
+  assert.ok(g.player.health < 20, `hit by the laser (health ${g.player.health})`);
+});

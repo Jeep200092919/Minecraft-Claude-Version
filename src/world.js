@@ -27,6 +27,8 @@ export class World {
     this.blockEntities = blockEntities || new Map();
     // Growing crops: "x,y,z" -> [x, y, z].
     this.crops = new Map();
+    // Monster spawners: "x,y,z" -> [x, y, z].
+    this.spawners = new Map();
     this.onChunkUnload = null;
     this._lastKey = -1;
     this._lastChunk = null;
@@ -125,6 +127,8 @@ export class World {
     const key = `${x},${y},${z}`;
     if (BLOCKS[id].crop !== undefined || BLOCKS[id].sapling) this.crops.set(key, [x, y, z]);
     else this.crops.delete(key);
+    if (id === B.SPAWNER) this.spawners.set(key, [x, y, z]);
+    else this.spawners.delete(key);
 
     this.relight(x, y, z);
     this.markDirty(x, z);
@@ -351,9 +355,9 @@ export class World {
     this.generator.generate(c, this.edits.get(c.key));
     for (let i = 0; i < c.blocks.length; i++) {
       const id = c.blocks[i];
-      if (id && (BLOCKS[id].crop !== undefined || BLOCKS[id].sapling)) {
+      if (id && (BLOCKS[id].crop !== undefined || BLOCKS[id].sapling || id === B.SPAWNER)) {
         const x = cx * CHUNK_SIZE + (i & 15), y = i >> 8, z = cz * CHUNK_SIZE + ((i >> 4) & 15);
-        this.crops.set(`${x},${y},${z}`, [x, y, z]);
+        (id === B.SPAWNER ? this.spawners : this.crops).set(`${x},${y},${z}`, [x, y, z]);
       }
     }
     this.initChunkLight(c);

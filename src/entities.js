@@ -20,7 +20,7 @@ const CARRIABLE = new Set([B.GRASS, B.DIRT, B.SAND, B.GRAVEL, B.CLAY, B.PUMPKIN,
   B.RED_MUSHROOM, B.BROWN_MUSHROOM, B.TNT]);
 
 export function mobCategory(def) {
-  if (def.swims) return 'water';
+  if (def.swims) return def.hostile ? 'monster' : 'water';
   if (def.flies) return 'ambient';
   if (def.hostile || def.teleports) return 'monster';
   if (def.villager || def.defender) return 'misc';
@@ -634,8 +634,21 @@ export class EntityManager {
     if (!w.isReady(x, z)) return;
     const y = SEA_LEVEL - 1 - Math.floor(Math.random() * 6);
     for (let k = 0; k < 3; k++) if (w.getBlock(x, y - k, z) !== B.WATER) return;
-    const n = 2 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < n; i++) this.spawnIfFits('squid', x + 0.5 + Math.random() - 0.5, y - 2, z + 0.5 + Math.random() - 0.5);
+    const type = Math.random() < 0.6 ? 'cod' : 'squid';
+    const n = type === 'cod' ? 3 + Math.floor(Math.random() * 4) : 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) this.spawnIfFits(type, x + 0.5 + Math.random() - 0.5, y - 2, z + 0.5 + Math.random() - 0.5);
+  }
+
+  // Guardians patrol ocean monuments.
+  trySpawnGuardian(p) {
+    for (const s of this.world.generator.structures.near('ocean_monument', p[0], p[2], p[0], p[2], 32)) {
+      if (this.countNear((e) => e.type === 'guardian', [s.x, 0, s.z], 40) >= 6) continue;
+      const x = s.bbox[0] + 1 + Math.random() * (s.bbox[3] - s.bbox[0] - 2);
+      const z = s.bbox[2] + 1 + Math.random() * (s.bbox[5] - s.bbox[2] - 2);
+      const y = s.y + 1 + Math.floor(Math.random() * 12);
+      if (Math.hypot(x - p[0], y - p[1], z - p[2]) < 10) continue;
+      this.spawnIfFits('guardian', x, y, z);
+    }
   }
 
   // Bats in dark caves.
@@ -682,6 +695,7 @@ export class EntityManager {
         if (near('monster', 96) < CAPS.monster) this.trySpawnHostile(p, sky.day);
         if (Math.random() < 0.3 && near('water', 64) < CAPS.water) this.trySpawnSquid(p);
         if (Math.random() < 0.3 && near('ambient', 64) < CAPS.ambient) this.trySpawnBat(p);
+        if (Math.random() < 0.3) this.trySpawnGuardian(p);
       }
     }
     this.villageTimer -= dt;
@@ -694,6 +708,7 @@ export class EntityManager {
       this.stareTimer = 0.2;
       this.checkStares();
     }
+    this.updateSpawners(dt, everyone);
 
     for (const e of this.list) {
       if (e.kind === 'tnt') this.updateTNT(e, dt);
@@ -713,6 +728,35 @@ export class EntityManager {
       }
       return true;
     });
+  }
+
+  // Monster spawners within 16 blocks of a player release up to four of their
+  // mob every 10 to 40 seconds, while fewer than six are around.
+  updateSpawners(dt, everyone) {
+    const w = this.world;
+    this.spawnerTimers ??= new Map();
+    for (const [key, pos] of w.spawners) {
+      const [x, y, z] = pos;
+      const c = [x + 0.5, y + 0.5, z + 0.5];
+      if (!everyone.some((p) => dist3(p.pos, c) < 16)) continue;
+      if (w.getBlock(x, y, z) !== B.SPAWNER) { w.spawners.delete(key); continue; }
+      let t = this.spawnerTimers.get(key) ?? 1 + Math.random() * 4;
+      t -= dt;
+      if (Math.random() < dt * 4) this.game.particles.smoke(c[0], c[1], c[2], 1, 0.3, 0.1, 0.85);
+      if (t <= 0) {
+        t = 10 + Math.random() * 30;
+        const type = w.generator.structures.spawnerAt(x, y, z);
+        if (this.mobsNear(c, 9).filter((e) => e.type === type).length < 6) {
+          for (let i = 0; i < 4; i++) {
+            const sx = x + 0.5 + (Math.random() - 0.5) * 8, sy = y + Math.floor(Math.random() * 3) - 1, sz = z + 0.5 + (Math.random() - 0.5) * 8;
+            if (w.getBlockLight(Math.floor(sx), sy, Math.floor(sz)) > 11) continue;
+            const m = this.spawnIfFits(type, sx, sy, sz);
+            if (m) this.game.particles.smoke(sx, sy + 0.5, sz, 6, 0.4, 0.15, 0.7);
+          }
+        }
+      }
+      this.spawnerTimers.set(key, t);
+    }
   }
 
   // Endermen get angry when a player looks straight at their head.
@@ -987,7 +1031,7 @@ export class EntityManager {
     const viewer = this.nearestPlayer(m.pos, 8, true);
 
     if (def.flies) this.flyBat(m, dt);
-    else if (def.swims) this.swimSquid(m, dt);
+    else if (def.swims) this.swimAI(m, dt);
     else if (this.walkAI(m, dt, viewer) === 'exploded') return;
 
     // Look at the nearest player when close.
@@ -1255,11 +1299,31 @@ export class EntityManager {
     m.walkPhase += dt * 30;
   }
 
-  // Squid drift and pulse through water; on land they flop and suffocate.
-  swimSquid(m, dt) {
+  // Squid, fish and guardians drift and pulse through water; on land they
+  // flop and suffocate. Guardians keep their distance and charge a laser.
+  swimAI(m, dt) {
     const w = this.world;
     const ix = Math.floor(m.pos[0]), iz = Math.floor(m.pos[2]);
     m.inWater = w.getBlock(ix, Math.floor(m.pos[1] + m.h / 2), iz) === B.WATER;
+    const t = m.def.laser && m.inWater ? this.resolveTarget(m.target) : null;
+    if (t) {
+      const d = [t.pos[0] - m.pos[0], t.pos[1] + (t.h ?? 1.8) * 0.5 - m.pos[1] - m.h / 2, t.pos[2] - m.pos[2]];
+      const dist = Math.hypot(...d) || 1;
+      const k = dist > 9 ? 1 : dist < 5 ? -1 : 0;
+      m.swimDir = k ? d.map((v) => (v / dist) * k) : [-d[2] / dist, 0, d[0] / dist];
+      m.swimPulse = 0.8;
+      m.swimTimer = 0.5;
+      m.yaw += wrapAngle(Math.atan2(-d[0], -d[2]) - m.yaw) * Math.min(1, dt * 6);
+      if (m.seesTarget && dist < 16 && m.attackCooldown <= 0) {
+        m.laser = (m.laser || 0) + dt;
+        if (m.laser >= 2) {
+          m.laser = 0;
+          m.attackCooldown = 1.5;
+          if (t.kind === 'mob') t.hurt(m.def.attack, null, this, m);
+          else this.damagePlayer(t.ref, m.def.attack, m.pos, m, 0.5);
+        }
+      } else m.laser = 0;
+    } else m.laser = 0;
     if (m.inWater) {
       m.air = 15;
       m.swimTimer -= dt;
@@ -1275,7 +1339,7 @@ export class EntityManager {
       for (let i = 0; i < 3; i++) m.vel[i] += (m.swimDir[i] * sp - m.vel[i]) * k;
       if (w.getBlock(ix, Math.floor(m.pos[1] + m.h + 0.2), iz) !== B.WATER && m.vel[1] > 0) m.vel[1] = 0;
       m.swimPhase += dt * (1.5 + m.swimPulse * 5);
-      if (Math.hypot(m.vel[0], m.vel[2]) > 0.3) m.yaw += wrapAngle(Math.atan2(-m.vel[0], -m.vel[2]) - m.yaw) * Math.min(1, dt * 3);
+      if (!t && Math.hypot(m.vel[0], m.vel[2]) > 0.3) m.yaw += wrapAngle(Math.atan2(-m.vel[0], -m.vel[2]) - m.yaw) * Math.min(1, dt * 3);
     } else {
       m.vel[1] = Math.max(m.vel[1] - GRAVITY * dt, -40);
       const damp = Math.pow(m.onGround ? 0.01 : 0.5, dt);
@@ -1347,6 +1411,20 @@ export class EntityManager {
   renderList(time) {
     const out = [];
     const world = this.world;
+    // A small spinning copy of the mob inside nearby spawners.
+    const cam = this.game.player.pos;
+    for (const [x, y, z] of world.spawners.values()) {
+      if (Math.abs(x - cam[0]) > 24 || Math.abs(z - cam[2]) > 24 || Math.abs(y - cam[1]) > 24) continue;
+      if (world.getBlock(x, y, z) !== B.SPAWNER) continue;
+      const type = world.generator.structures.spawnerAt(x, y, z);
+      const def = MOBS[type];
+      const s = 0.45 / Math.max(def.height, def.width);
+      const parts = this.meshesFor(type).map((p) => ({
+        mesh: p.mesh,
+        matrix: compose(translation(0, 0.1, 0), rotationY(time * 2.2), scaling(s), translation(p.pivot[0] / 16, p.pivot[1] / 16, p.pivot[2] / 16)),
+      }));
+      out.push({ parts, pos: [x + 0.5, y + 0.1, z + 0.5], light: [world.getSkyLight(x, y + 1, z), 15], overlay: [0, 0, 0, 0], texture: 'entity' });
+    }
     for (const e of this.list) {
       const light = [
         world.getSkyLight(Math.floor(e.pos[0]), Math.floor(e.pos[1] + 0.5), Math.floor(e.pos[2])),
@@ -1470,6 +1548,9 @@ export class EntityManager {
             rot = compose(rotationY(wag), rotationX(sit ? 1.5 : e.tamed ? 1.1 : 0.6));
             break;
           }
+          case 'gtail':
+            rot = rotationY(Math.sin(e.swimPhase * 2 + time * (def.fish ? 8 : 2)) * (def.fish ? 0.5 : 0.35));
+            break;
           case 'tentacle':
             rot = compose(rotationY(-p.angle), rotationZ(0.25 + (0.5 + Math.sin(e.swimPhase * 2) * 0.5) * 0.6));
             break;
@@ -1497,6 +1578,23 @@ export class EntityManager {
         const m = this.itemMesh(def.holds);
         const matrix = compose(...base, rightArm, translation(0, -10 / 16, 0), rotationY(Math.PI / 2), rotationZ(Math.PI / 4), scaling(0.7), translation(-0.5, -0.5, -0.5));
         out.push({ parts: [{ mesh: m.mesh, matrix }], pos: e.pos, light, overlay: [0, 0, 0, 0], texture: m.texture, uvScale: m.uvScale });
+      }
+      // A guardian's laser: purple while charging, turning yellow before it fires.
+      if (e.laser > 0) {
+        const t = this.resolveTarget(e.target);
+        if (t) {
+          const from = [e.pos[0], e.pos[1] + e.h * 0.55, e.pos[2]];
+          const d = [t.pos[0] - from[0], t.pos[1] + (t.h ?? 1.8) * 0.55 - from[1], t.pos[2] - from[2]];
+          const len = Math.hypot(...d);
+          const c = Math.min(1, e.laser / 2);
+          if (!this.meshes.has('beam')) {
+            const b = buildBlockMesh(B.SEA_LANTERN);
+            this.meshes.set('beam', { mesh: this.game.renderer.createMesh(b.data, b.quads), texture: 'blocks', uvScale: 1 / 16 });
+          }
+          const beam = this.meshes.get('beam');
+          const matrix = compose(rotationY(Math.atan2(d[0], d[2])), rotationX(-Math.atan2(d[1], Math.hypot(d[0], d[2]))), scaling(0.07 + c * 0.05, 0.07 + c * 0.05, len), translation(-0.5, -0.5, 0));
+          out.push({ parts: [{ mesh: beam.mesh, matrix }], pos: from, light: [15, 15], overlay: [0.55 + 0.45 * c, 0.3 + 0.6 * c, 1 - 0.8 * c, 0.85], texture: beam.texture, uvScale: beam.uvScale });
+        }
       }
       if (e.carry) {
         const m = this.itemMesh(e.carry);

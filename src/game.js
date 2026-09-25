@@ -23,7 +23,7 @@ import { PlayerRenderer } from './playermodel.js';
 import { Weather } from './weather.js';
 import { Chat } from './chat.js';
 import { skyState } from './sky.js';
-import { villageLoot } from './villages.js';
+import { rollLoot } from './structures.js';
 
 export const DEFAULT_SETTINGS = {
   renderDistance: 8,
@@ -302,8 +302,9 @@ export class Game {
     if (!be || be.type !== type) {
       be = type === 'furnace' ? newFurnace() : newChest();
       // Player-placed containers get their block entity when placed, so a
-      // missing one means a chest generated in a village: fill it with loot.
-      if (type === 'chest') be.slots = villageLoot(x, y, z);
+      // missing one means a generated chest: fill it with the loot of the
+      // structure it is in.
+      if (type === 'chest') be.slots = rollLoot(this.world.generator.structures.lootAt(x, y, z) || 'village', x, y, z);
       this.world.setBlockEntity(x, y, z, be);
     }
     this.openInventory({ type, entity: be });
@@ -455,6 +456,7 @@ export class Game {
       if (ready) {
         const input = this.movementInput();
         player.update(dt, input, this.world, this.creative, events);
+        this.checkPressurePlate();
       }
       this.handleEvents(events);
       if (this.sleeping) this.updateSleep(dt);
@@ -753,6 +755,35 @@ export class Game {
   }
 
   // Right-click on a mob: shear sheep, milk cows.
+  // Stepping on a pressure plate sets off TNT underneath (the desert pyramid
+  // trap).
+  checkPressurePlate() {
+    const p = this.player;
+    const x = Math.floor(p.pos[0]), y = Math.floor(p.pos[1] + 0.05), z = Math.floor(p.pos[2]);
+    const key = BLOCKS[this.world.getBlock(x, y, z)].plate ? `${x},${y},${z}` : null;
+    if (key && key !== this.lastPlate) {
+      this.sound.door?.(false);
+      for (let dy = -3; dy <= -1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (this.world.getBlock(x + dx, y + dy, z + dz) === B.TNT) this.igniteTNT(x + dx, y + dy, z + dz, 1 + Math.random() * 0.5);
+          }
+        }
+      }
+    }
+    this.lastPlate = key;
+  }
+
+  // Turns a TNT block into primed TNT (the world owner does it online).
+  igniteTNT(x, y, z, fuse = 4) {
+    if (this.net && !this.net.isAuthority) {
+      this.net.sendIgnite(x, y, z, fuse);
+      return;
+    }
+    this.setBlockSynced(x, y, z, B.AIR);
+    this.entities.primeTNT(x, y, z, fuse);
+  }
+
   useOnMob(mob) {
     const inv = this.inventory;
     const it = inv.selectedStack ? ITEMS.get(inv.selectedStack.id) : null;

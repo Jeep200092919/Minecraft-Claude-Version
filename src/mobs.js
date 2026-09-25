@@ -210,6 +210,33 @@ export const MOBS = {
       { kind: 'legFR', box: [1, 0, 1, 3, 3, 3], uv: [30, 10], uvBox: [2, 3, 2], pivot: [2, 3, 2] },
     ],
   },
+  guardian: {
+    health: 30, width: 0.85, height: 0.85, speed: 3, hostile: true, skin: 17, swims: true, laser: true, attack: 6, xp: 10,
+    drops: [[I.PRISMARINE_SHARD, 0, 2], [I.PRISMARINE_CRYSTALS, 0, 1], [I.RAW_COD, 0, 1]], sound: 'guardian',
+    parts: [
+      { kind: 'body', box: [-6, 1, -6, 6, 13, 6], uv: [0, 0] },
+      { kind: 'body', box: [-1, 6, 6, 1, 8, 7], uv: [48, 0], uvBox: [2, 2, 1] },
+      // Spikes sticking out of the edges.
+      ...[[0, 13, 0, 0, 1, 0], [-6, 13, -6, -1, 1, -1], [6, 13, -6, 1, 1, -1], [-6, 13, 6, -1, 1, 1], [6, 13, 6, 1, 1, 1],
+        [-6, 7, -6, -1, 0, -1], [6, 7, -6, 1, 0, -1], [-6, 7, 6, -1, 0, 1], [6, 7, 6, 1, 0, 1],
+        [-6, 1, -6, -1, -1, -1], [6, 1, -6, 1, -1, -1], [-6, 1, 6, -1, -1, 1], [6, 1, 6, 1, -1, 1]].map(([x, y, z, dx, dy, dz]) => {
+        const b = [x - 1 + dx, y - 1 + dy, z - 1 + dz];
+        return { kind: 'spike', box: [b[0], b[1], b[2], b[0] + 2, b[1] + 2, b[2] + 2], uv: [0, 24], pivot: [x, y, z] };
+      }),
+      { kind: 'gtail', box: [-2, 5, -12, 2, 9, -6], uv: [24, 24], pivot: [0, 7, -6] },
+      { kind: 'gtail', box: [-1, 6, -18, 1, 8, -12], uv: [24, 34], pivot: [0, 7, -6] },
+    ],
+  },
+  cod: {
+    health: 3, width: 0.5, height: 0.3, speed: 2, passive: true, skin: 18, swims: true, fish: true, xp: 1,
+    drops: [[I.RAW_COD, 1, 1]], sound: 'squid',
+    parts: [
+      { kind: 'body', box: [-1, 0, -3, 1, 4, 4], uv: [0, 0] },
+      { kind: 'body', box: [-1, 0, 4, 1, 3, 6], uv: [20, 0] },
+      { kind: 'body', box: [0, 4, -2, 1, 5, 2], uv: [0, 12] },
+      { kind: 'gtail', box: [0, 0, -7, 1, 4, -3], uv: [12, 12], pivot: [0, 2, -3] },
+    ],
+  },
 };
 
 function humanoid() {
@@ -240,6 +267,8 @@ export const SPAWN_EGGS = {
   [I.SQUID_SPAWN_EGG]: 'squid',
   [I.BAT_SPAWN_EGG]: 'bat',
   [I.RABBIT_SPAWN_EGG]: 'rabbit',
+  [I.GUARDIAN_SPAWN_EGG]: 'guardian',
+  [I.COD_SPAWN_EGG]: 'cod',
 };
 
 // Texture rectangles of a box laid out Minecraft-style: [u, v, w, h] per face,
@@ -679,6 +708,33 @@ function paintRabbit() {
   return s;
 }
 
+function paintGuardian() {
+  const s = new Skin('guardian');
+  const hide = mottle(230, 3, [98, 160, 142], [70, 126, 116], 0.9);
+  const plates = valueNoise(231, 4);
+  s.box(0, 0, 12, 12, 12, (fc, x, y, w, h, sx, sy) => {
+    if (x === 0 || y === 0 || x === w - 1 || y === h - 1) return [60, 104, 96];
+    if (plates(sx, sy) > 0.78) return [208, 120, 70]; // orange patches
+    return (x + y) % 6 === 0 ? [130, 184, 166] : hide(sx, sy);
+  }, 6);
+  // The big eye.
+  s.box(48, 0, 2, 2, 1, (fc, x) => (fc === FRONT ? (x === 0 ? [250, 250, 244] : [40, 20, 50]) : [240, 236, 226]), 0);
+  s.box(0, 24, 2, 2, 2, (fc, x, y) => (y === 0 ? [240, 220, 180] : [220, 150, 90]), 4);
+  s.box(24, 24, 4, 4, 6, (fc, x, y, w, h, sx, sy) => hide(sx, sy), 6);
+  s.box(24, 34, 2, 2, 6, (fc, x, y, w, h, sx, sy) => (x > w - 3 ? [208, 120, 70] : hide(sx, sy)), 6);
+  return s;
+}
+
+function paintCod() {
+  const s = new Skin('cod');
+  const scales = mottle(240, 2, [176, 150, 108], [140, 116, 80], 0.9);
+  s.box(0, 0, 2, 4, 7, (fc, x, y, w, h, sx, sy) => (fc === BOTTOM || (fc < 2 && y === h - 1) ? [226, 214, 190] : scales(sx, sy)), 6);
+  s.box(20, 0, 2, 3, 2, (fc, x, y, w, h, sx, sy) => (fc < 2 && y === 1 && x === (fc === 0 ? 0 : w - 1) ? [20, 20, 20] : scales(sx, sy)), 4);
+  s.box(0, 12, 1, 1, 4, [130, 110, 80], 4);
+  s.box(12, 12, 1, 4, 4, (fc, x, y) => (y === 0 || y === 3 ? [120, 100, 70] : [160, 136, 100]), 4);
+  return s;
+}
+
 // The player character: an original explorer in a few colour variants.
 export const PLAYER_COLORS = [
   { shirt: [60, 160, 80], pants: [96, 70, 44], hair: [200, 160, 80] },
@@ -741,7 +797,7 @@ export const ARMOR_MATERIAL_LIST = ['leather', 'iron', 'golden', 'diamond'];
 
 const MOB_PAINTERS = [paintPig, paintCow, paintSheep, paintChicken, paintZombie, paintCreeper, paintVillager,
   paintSkeleton, paintSpider, paintEnderman, paintSlime, () => paintWolf(), paintIronGolem, paintSquid, paintBat, paintRabbit,
-  () => paintWolf(true)];
+  () => paintWolf(true), paintGuardian, paintCod];
 export const PLAYER_SKIN_BASE = MOB_PAINTERS.length;
 export const ARMOR_SKIN_BASE = PLAYER_SKIN_BASE + PLAYER_COLORS.length;
 

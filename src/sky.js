@@ -41,7 +41,7 @@ export function skyState(ticks, rain = 0, flash = 0) {
   } else {
     lightColor = scale3([0.22, 0.30, 0.55], 0.3 * smoothstep(-0.03, 0.12, moonDir[1]));
   }
-  let ambientSky = mix3([0.016, 0.024, 0.055], [0.24, 0.33, 0.5], day);
+  let ambientSky = mix3([0.016, 0.024, 0.055], [0.29, 0.33, 0.42], day);
   ambientSky = add3(ambientSky, scale3([0.16, 0.07, 0.02], sunset * day));
   const ambientGround = mix3(scale3(ambientSky, 0.45), [0.14, 0.11, 0.08], 0.3 * day);
 
