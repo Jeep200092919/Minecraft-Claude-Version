@@ -135,6 +135,24 @@ export class World {
     return true;
   }
 
+  // A block changed by another player: applied now if its chunk is loaded,
+  // otherwise when the chunk is generated.
+  setBlockRemote(x, y, z, id) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return;
+    if (this.setBlock(x, y, z, id)) return;
+    const lx = x & 15, lz = z & 15;
+    const idx = (y << 8) | (lz << 4) | lx;
+    const c = this.chunkAt(x, z);
+    if (c && c.state < CHUNK_STATE.LIT) {
+      c.blocks[idx] = id;
+      c.updateHeight(lx, lz);
+    }
+    const key = chunkKey(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE));
+    let edits = this.edits.get(key);
+    if (!edits) this.edits.set(key, (edits = new Map()));
+    edits.set(idx, id);
+  }
+
   getBlockEntity(x, y, z) {
     return this.blockEntities.get(`${x},${y},${z}`) || null;
   }

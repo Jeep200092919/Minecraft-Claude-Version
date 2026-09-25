@@ -43,6 +43,14 @@ function weighted(list) {
 
 let nextId = 1;
 
+// Mob fields shared with other players (see snapshot()), with their defaults.
+const MOB_SYNC = {
+  sheared: false, woolColor: undefined, tamed: false, owner: null, sitting: false, carry: 0, fuse: 0, burn: 0, aim: 0,
+  laser: 0, roost: false, swing: 0, stare: 0, swimPhase: 0, baby: 0, onGround: false, squish: 0,
+};
+const KINDS = { m: 'mob', i: 'item', x: 'xp', p: 'projectile', t: 'tnt' };
+const r2 = (v) => Math.round(v * 100) / 100;
+
 class Mob {
   constructor(type, x, y, z) {
     this.id = nextId++;
@@ -203,7 +211,7 @@ class Projectile {
   }
 }
 
-function rayBox(o, d, b) {
+export function rayBox(o, d, b) {
   let tmin = 0, tmax = Infinity;
   for (let a = 0; a < 3; a++) {
     if (Math.abs(d[a]) < 1e-9) {
@@ -238,8 +246,18 @@ export class EntityManager {
     return this.game.world;
   }
 
+  // In multiplayer only one player (the authority) simulates entities; the
+  // others ask it to create them.
+  get remote() {
+    return !!this.game.net && !this.game.net.isAuthority;
+  }
+
   spawn(type, x, y, z, opts = {}) {
     if (!MOBS[type]) return null;
+    if (this.remote) {
+      this.game.net.sendSpawn(type, [x, y, z], opts);
+      return null;
+    }
     const m = new Mob(type, x, y, z);
     if (opts.size && m.def.sizes) m.setSize(opts.size);
     this.list.push(m);
@@ -273,15 +291,24 @@ export class EntityManager {
   }
 
   // Drops an item stack into the world.
-  dropItem(stack, x, y, z, vel) {
+  dropItem(stack, x, y, z, vel, pickupDelay = 0.5) {
     if (!stack || stack.count <= 0) return null;
+    if (this.remote) {
+      this.game.net.sendDrop(stack, [x, y, z], vel, pickupDelay);
+      return null;
+    }
     const e = new ItemEntity(stack, x, y, z, vel);
+    e.pickupDelay = pickupDelay;
     this.list.push(e);
     return e;
   }
 
   // Splits XP into orbs like the original (bigger values, fewer orbs).
   dropXP(amount, x, y, z) {
+    if (this.remote) {
+      this.game.net.sendDropXP(amount, [x, y, z]);
+      return;
+    }
     while (amount > 0) {
       const v = amount >= 17 ? 17 : amount >= 7 ? 7 : amount >= 3 ? 3 : 1;
       amount -= v;
@@ -289,8 +316,13 @@ export class EntityManager {
     }
   }
 
-  shoot(type, pos, vel, owner, damage = 0) {
+  shoot(type, pos, vel, owner, damage = 0, pickup = false) {
+    if (this.remote) {
+      this.game.net.sendShoot(type, pos, vel, damage, pickup);
+      return null;
+    }
     const p = new Projectile(type, pos, vel, owner, damage);
+    p.pickup = pickup;
     this.list.push(p);
     return p;
   }
@@ -386,11 +418,24 @@ export class EntityManager {
   // A player right-clicks a mob holding itemId (null for an empty hand).
   // Returns 'consume' when one item should be used up, 'use' when the click
   // did something, or null.
-  interactMob(mob, itemId, ref) {
-    if (!mob.def.tameable || mob.dead) return null;
+  // With apply = false it only predicts the result (used by players who are
+  // not running the simulation, while the real click goes to the authority).
+  interactMob(mob, itemId, ref, apply = true) {
+    if (mob.dead) return null;
     const fx = this.game.particles;
+    if (itemId === I.SHEARS && mob.type === 'sheep' && !mob.sheared) {
+      if (!apply) return 'tool';
+      mob.sheared = true;
+      mob.woolTimer = 60 + Math.random() * 60;
+      const n = 1 + Math.floor(Math.random() * 3);
+      this.dropItem({ id: mob.woolColor ?? B.WHITE_WOOL, count: n }, mob.pos[0], mob.pos[1] + 1, mob.pos[2]);
+      return 'tool';
+    }
+    if (itemId === I.BUCKET && mob.type === 'cow') return 'milk';
+    if (!mob.def.tameable) return null;
     if (!mob.tamed && itemId === I.BONE) {
       if (mob.target) return null; // angry wolves can't be tamed
+      if (!apply) return 'consume';
       if (Math.random() < 1 / 3) {
         mob.tamed = true;
         mob.owner = ref;
@@ -404,10 +449,12 @@ export class EntityManager {
     }
     if (mob.tamed && mob.owner === ref) {
       if (WOLF_FOOD.has(itemId) && mob.health < mob.maxHealth) {
+        if (!apply) return 'consume';
         mob.health = Math.min(mob.maxHealth, mob.health + 4);
         fx.fx('heart', mob.pos[0], mob.pos[1] + mob.h, mob.pos[2], 3, 0.3);
         return 'consume';
       }
+      if (!apply) return 'use';
       mob.sitting = !mob.sitting;
       mob.target = null;
       mob.vel[0] = mob.vel[2] = 0;
@@ -467,7 +514,7 @@ export class EntityManager {
       if (!p.dead && g.state !== 'dead') {
         all.push({ kind: 'player', ref: this.localRef, pos: p.pos, hw: 0.3, h: 1.8, yaw: p.yaw, pitch: p.pitch, creative: g.creative });
       }
-      if (g.net?.isAuthority) {
+      if (g.net) {
         for (const r of g.net.players.values()) {
           if (!r.dead && r.pos) all.push({ kind: 'player', ref: r.id, pos: r.pos, hw: 0.3, h: 1.8, yaw: r.yaw, pitch: r.pitch, creative: r.creative });
         }
@@ -684,6 +731,10 @@ export class EntityManager {
   update(dt, sky) {
     const game = this.game;
     this.frameP = null;
+    if (this.remote) {
+      this.updateGhosts(dt);
+      return;
+    }
     const everyone = this.players(true);
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
@@ -783,7 +834,6 @@ export class EntityManager {
 
   updateItem(e, dt) {
     const game = this.game;
-    const player = game.player;
     e.age += dt;
     e.spin += dt * 1.6;
     if (e.age > 300) { e.removed = true; return; }
@@ -793,14 +843,22 @@ export class EntityManager {
     else e.vel[1] = Math.max(e.vel[1] - GRAVITY * 0.7 * dt, -30);
     const damp = Math.pow(e.onGround ? 0.02 : 0.6, dt);
     e.vel[0] *= damp; e.vel[2] *= damp;
-    // Pulled towards a nearby player once it can be picked up.
-    const dx = player.pos[0] - e.pos[0], dy = player.pos[1] + 0.6 - e.pos[1], dz = player.pos[2] - e.pos[2];
-    const d = Math.hypot(dx, dy, dz);
-    const alive = !player.dead && game.state !== 'dead';
-    if (alive && e.age > e.pickupDelay && d < 1.8) {
+    // Pulled towards the nearest player once it can be picked up.
+    const pl = e.age > e.pickupDelay ? this.nearestPlayer([e.pos[0], e.pos[1] - 0.6, e.pos[2]], 1.8, true) : null;
+    if (pl) {
+      const dx = pl.pos[0] - e.pos[0], dy = pl.pos[1] + 0.6 - e.pos[1], dz = pl.pos[2] - e.pos[2];
+      const d = Math.hypot(dx, dy, dz);
       const pull = 10 * dt / Math.max(0.3, d);
       e.vel[0] += dx * pull; e.vel[1] += dy * pull; e.vel[2] += dz * pull;
-      if (d < 0.8 && game.pickupItem(e)) return;
+      if (d < 0.8) {
+        if (pl.ref === this.localRef) {
+          if (game.pickupItem(e)) return;
+        } else {
+          game.net.sendGive(pl.ref, e.stack);
+          e.removed = true;
+          return;
+        }
+      }
     }
     const res = moveBody(w, e, e.vel[0] * dt, e.vel[1] * dt, e.vel[2] * dt);
     e.onGround = res.onGround;
@@ -820,16 +878,21 @@ export class EntityManager {
 
   updateXP(e, dt) {
     const game = this.game;
-    const player = game.player;
     e.age += dt;
     if (e.age > 300) { e.removed = true; return; }
     e.vel[1] = Math.max(e.vel[1] - GRAVITY * 0.5 * dt, -20);
-    const dx = player.pos[0] - e.pos[0], dy = player.pos[1] + 0.8 - e.pos[1], dz = player.pos[2] - e.pos[2];
-    const d = Math.hypot(dx, dy, dz);
-    if (!player.dead && e.age > 0.4 && d < 7) {
+    const pl = e.age > 0.4 ? this.nearestPlayer([e.pos[0], e.pos[1] - 0.8, e.pos[2]], 7, true) : null;
+    if (pl) {
+      const dx = pl.pos[0] - e.pos[0], dy = pl.pos[1] + 0.8 - e.pos[1], dz = pl.pos[2] - e.pos[2];
+      const d = Math.hypot(dx, dy, dz);
       const pull = (1 - d / 7) * 40 * dt / Math.max(0.3, d);
       e.vel[0] += dx * pull; e.vel[1] += dy * pull; e.vel[2] += dz * pull;
-      if (d < 0.9) { e.removed = true; game.gainXP(e.value); return; }
+      if (d < 0.9) {
+        e.removed = true;
+        if (pl.ref === this.localRef) game.gainXP(e.value);
+        else game.net.sendGiveXP(pl.ref, e.value);
+        return;
+      }
     }
     const damp = Math.pow(0.4, dt);
     e.vel[0] *= damp; e.vel[2] *= damp;
@@ -842,9 +905,12 @@ export class EntityManager {
     if (p.stuck) {
       if (p.age > 60) p.removed = true;
       // Stuck arrows can be picked back up.
-      const pl = game.player;
-      if (p.type === 'arrow' && p.pickup && Math.hypot(pl.pos[0] - p.pos[0], pl.pos[1] + 0.6 - p.pos[1], pl.pos[2] - p.pos[2]) < 1.2) {
+      const pl = p.type === 'arrow' && p.pickup ? this.nearestPlayer([p.pos[0], p.pos[1] - 0.6, p.pos[2]], 1.2, true) : null;
+      if (pl?.ref === this.localRef) {
         if (game.pickupItem({ stack: { id: I.ARROW, count: 1 }, removed: false })) p.removed = true;
+      } else if (pl) {
+        game.net.sendGive(pl.ref, { id: I.ARROW, count: 1 });
+        p.removed = true;
       }
       return;
     }
@@ -926,6 +992,8 @@ export class EntityManager {
       if (m) m.baby = 60;
     } else if (p.type === 'ender_pearl' && p.owner === this.localRef) {
       game.teleportPlayer(p.pos[0], Math.floor(p.pos[1]) + 0.01, p.pos[2]);
+    } else if (p.type === 'ender_pearl' && isPlayerRef(p.owner)) {
+      game.net?.sendTeleport(p.owner, [p.pos[0], Math.floor(p.pos[1]) + 0.01, p.pos[2]]);
     }
   }
 
@@ -1362,6 +1430,130 @@ export class EntityManager {
       m.burnTick = 1;
       this.game.particles.smoke(m.pos[0], m.pos[1] + m.h, m.pos[2], 3, 0.4, 0.18, 0.85);
       m.hurt(dps, null, this);
+    }
+  }
+
+  // --- Multiplayer ----------------------------------------------------------------
+  // The authority sends compact snapshots of its entities; everyone else keeps
+  // interpolated copies ("ghosts") built from the same classes, so a player
+  // who takes over the simulation can simply carry on with them.
+
+  snapshot() {
+    const out = [];
+    for (const e of this.list) {
+      if (e.removed) continue;
+      const s = { i: e.id, k: e.kind[0], p: e.pos.map(r2) };
+      if (e.kind === 'mob') {
+        s.ty = e.type;
+        s.y = r2(e.yaw);
+        s.hy = r2(e.headYaw);
+        s.hp = r2(e.headPitch);
+        if (e.hurtTime > 0) s.hu = r2(e.hurtTime);
+        if (e.dead) s.dt = r2(e.deathTime);
+        if (e.def.sizes) s.sz = e.size;
+        for (const f in MOB_SYNC) if (e[f]) s[f] = typeof e[f] === 'number' ? r2(e[f]) : e[f];
+        if (e.target) s.tg = e.target.kind === 'mob' ? e.target.id : e.target.ref;
+      } else if (e.kind === 'item') {
+        s.s = e.stack;
+        s.a = r2(e.age);
+      } else if (e.kind === 'xp') {
+        s.v = e.value;
+      } else if (e.kind === 'projectile') {
+        s.ty = e.type;
+        s.v = e.vel.map(r2);
+        if (e.stuck) s.st = 1;
+      } else if (e.kind === 'tnt') {
+        s.f = r2(e.fuse);
+      }
+      out.push(s);
+    }
+    return out;
+  }
+
+  makeGhost(kind, s) {
+    let e = null;
+    if (kind === 'mob' && MOBS[s.ty]) {
+      e = new Mob(s.ty, ...s.p);
+      if (s.sz) e.setSize(s.sz);
+    } else if (kind === 'item') e = new ItemEntity(s.s, ...s.p, [0, 0, 0]);
+    else if (kind === 'xp') e = new XPOrb(s.v, ...s.p);
+    else if (kind === 'projectile') e = new Projectile(s.ty, s.p, s.v, null, 0);
+    else if (kind === 'tnt') e = new PrimedTNT(0, 0, 0, s.f);
+    if (!e) return null;
+    e.id = s.i;
+    e.pos = [...s.p];
+    e.vel = [0, 0, 0];
+    return e;
+  }
+
+  applySnapshot(list) {
+    const byId = new Map(this.list.map((e) => [e.id, e]));
+    const next = [];
+    const targets = [];
+    const me = this.game.player;
+    for (const s of list) {
+      const kind = KINDS[s.k];
+      let e = byId.get(s.i);
+      if (!e || e.kind !== kind || (kind === 'mob' && e.type !== s.ty)) e = this.makeGhost(kind, s);
+      if (!e) continue;
+      byId.delete(s.i);
+      e.netPos = s.p;
+      if (kind === 'mob') {
+        const wasHurt = e.hurtTime > 0;
+        e.netYaw = s.y;
+        e.headYaw = s.hy;
+        e.headPitch = s.hp;
+        e.hurtTime = s.hu || 0;
+        e.deathTime = s.dt ?? -1;
+        if (s.sz && s.sz !== e.size) e.setSize(s.sz);
+        for (const f in MOB_SYNC) e[f] = f in s ? s[f] : MOB_SYNC[f];
+        if (e.hurtTime > 0 && !wasHurt && me && dist3(e.pos, me.pos) < 16) this.game.sound.mob(e.def.sound, e.dead ? 'death' : 'hurt');
+        targets.push([e, s.tg]);
+      } else if (kind === 'item') {
+        e.stack = s.s;
+        e.age = s.a;
+      } else if (kind === 'xp') {
+        e.value = s.v;
+      } else if (kind === 'projectile') {
+        e.vel = s.v;
+        e.stuck = !!s.st;
+      } else if (kind === 'tnt') {
+        e.fuse = s.f;
+      }
+      next.push(e);
+    }
+    const ids = new Map(next.map((e) => [e.id, e]));
+    for (const [e, tg] of targets) e.target = typeof tg === 'number' ? ids.get(tg) || null : tg ? { ref: tg } : null;
+    // Mobs that just vanished after dying leave a puff of smoke.
+    for (const e of byId.values()) if (e.kind === 'mob' && e.dead) this.game.particles.poof(e.pos[0], e.pos[1] + e.h / 2, e.pos[2]);
+    this.list = next;
+  }
+
+  updateGhosts(dt) {
+    const k = 1 - Math.exp(-dt * 12);
+    for (const e of this.list) {
+      if (!e.netPos) continue;
+      const ox = e.pos[0], oz = e.pos[2];
+      for (let i = 0; i < 3; i++) e.pos[i] += (e.netPos[i] - e.pos[i]) * k;
+      if (e.kind === 'mob') {
+        e.yaw += wrapAngle(e.netYaw - e.yaw) * k;
+        const hs = Math.hypot(e.pos[0] - ox, e.pos[2] - oz) / Math.max(dt, 1e-3);
+        e.walkAmount += (Math.min(1, hs / 2) - e.walkAmount) * Math.min(1, dt * 8);
+        e.walkPhase += (e.def.flies ? 30 : hs * 4.2) * dt;
+        e.hurtTime = Math.max(0, e.hurtTime - dt);
+        if (e.dead) e.deathTime += dt;
+      } else if (e.kind === 'item') {
+        e.age += dt;
+        e.spin += dt * 1.6;
+      }
+    }
+  }
+
+  // This player now runs the simulation: new entities must not reuse ids.
+  becomeAuthority() {
+    for (const e of this.list) {
+      nextId = Math.max(nextId, e.id + 1);
+      delete e.netPos;
     }
   }
 

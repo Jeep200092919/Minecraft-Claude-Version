@@ -111,21 +111,21 @@ export function useOnBlock(game, t) {
     return true;
   }
   if (it.tool?.type === 'hoe' && t.face === 2 && above === B.AIR && [B.GRASS, B.DIRT, B.DIRT_PATH].includes(t.id)) {
-    w.setBlock(t.x, t.y, t.z, B.FARMLAND);
+    game.setBlockSynced(t.x, t.y, t.z, B.FARMLAND);
     game.sound.place(B.DIRT);
     game.damageHeld(1);
     game.swing = 1;
     return true;
   }
   if (it.tool?.type === 'shovel' && t.face !== 3 && above === B.AIR && t.id === B.GRASS) {
-    w.setBlock(t.x, t.y, t.z, B.DIRT_PATH);
+    game.setBlockSynced(t.x, t.y, t.z, B.DIRT_PATH);
     game.sound.place(B.GRAVEL);
     game.damageHeld(1);
     game.swing = 1;
     return true;
   }
   if (it.plants && t.id === B.FARMLAND && t.face === 2 && above === B.AIR) {
-    w.setBlock(t.x, t.y + 1, t.z, it.plants);
+    game.setBlockSynced(t.x, t.y + 1, t.z, it.plants);
     if (!game.creative) inv.take(inv.selected, 1);
     game.sound.place(B.TALL_GRASS);
     game.swing = 1;
@@ -151,7 +151,7 @@ function useBucket(game, it) {
   if (!hit) return false;
   if (it.bucket === 'empty') {
     if (hit.id !== B.WATER && hit.id !== B.LAVA) return false;
-    w.setBlock(hit.x, hit.y, hit.z, B.AIR);
+    game.setBlockSynced(hit.x, hit.y, hit.z, B.AIR);
     const filled = hit.id === B.WATER ? I.WATER_BUCKET : I.LAVA_BUCKET;
     if (!game.creative) {
       inv.take(inv.selected, 1);
@@ -168,7 +168,7 @@ function useBucket(game, it) {
   if (y < 1 || y >= CHUNK_HEIGHT) return false;
   const cur = w.getBlock(x, y, z);
   if (!BLOCKS[cur].replaceable) return false;
-  w.setBlock(x, y, z, it.bucket);
+  game.setBlockSynced(x, y, z, it.bucket);
   if (it.bucket === B.WATER) game.flowWater(x, y - 1, z);
   if (!game.creative) inv.slots[inv.selected] = { id: I.BUCKET, count: 1 };
   game.sound.splash();
@@ -181,7 +181,7 @@ export function fertilize(game, x, y, z) {
   const id = w.getBlock(x, y, z);
   const b = BLOCKS[id];
   if (b.crop !== undefined && b.crop < 3) {
-    w.setBlock(x, y, z, Math.min(id + 2 + Math.floor(Math.random() * 2), id + (3 - b.crop)));
+    game.setBlockSynced(x, y, z, Math.min(id + 2 + Math.floor(Math.random() * 2), id + (3 - b.crop)));
     game.particles.smoke(x + 0.5, y + 0.4, z + 0.5, 8, 0.4, 0.08, 0.05);
     return true;
   }
@@ -195,7 +195,7 @@ export function fertilize(game, x, y, z) {
     for (let k = 0; k < 20; k++) {
       const gx = x + Math.round((Math.random() - 0.5) * 6), gz = z + Math.round((Math.random() - 0.5) * 6);
       if (w.getBlock(gx, y, gz) === B.GRASS && w.getBlock(gx, y + 1, gz) === B.AIR) {
-        w.setBlock(gx, y + 1, gz, flowers[Math.floor(Math.random() * flowers.length)]);
+        game.setBlockSynced(gx, y + 1, gz, flowers[Math.floor(Math.random() * flowers.length)]);
       }
     }
     game.particles.smoke(x + 0.5, y + 1.2, z + 0.5, 10, 1.5, 0.08, 0.05);
@@ -210,8 +210,8 @@ export function toggleDoor(game, x, y, z) {
   if (!b.door) return;
   const { upper, open, facing } = b.door;
   const lowerY = upper ? y - 1 : y;
-  w.setBlock(x, lowerY, z, doorId(0, open ? 0 : 1, facing));
-  if (BLOCKS[w.getBlock(x, lowerY + 1, z)].door) w.setBlock(x, lowerY + 1, z, doorId(1, open ? 0 : 1, facing));
+  game.setBlockSynced(x, lowerY, z, doorId(0, open ? 0 : 1, facing));
+  if (BLOCKS[w.getBlock(x, lowerY + 1, z)].door) game.setBlockSynced(x, lowerY + 1, z, doorId(1, open ? 0 : 1, facing));
   game.sound.door?.(!open);
   game.swing = 1;
 }
@@ -244,8 +244,8 @@ function placeDoor(game, t) {
   if (!IS_SOLID[w.getBlock(c.x, c.y - 1, c.z)]) return false;
   if (blockedByEntity(game, c.x, c.y, c.z) || blockedByEntity(game, c.x, c.y + 1, c.z)) return false;
   const f = lookFacing(game.player);
-  w.setBlock(c.x, c.y, c.z, doorId(0, 0, f));
-  w.setBlock(c.x, c.y + 1, c.z, doorId(1, 0, f));
+  game.setBlockSynced(c.x, c.y, c.z, doorId(0, 0, f));
+  game.setBlockSynced(c.x, c.y + 1, c.z, doorId(1, 0, f));
   finishPlace(game, B.PLANKS);
   return true;
 }
@@ -259,8 +259,8 @@ function placeBed(game, t) {
   if (!BLOCKS[w.getBlock(c.x, c.y, c.z)].replaceable || !BLOCKS[w.getBlock(hx, c.y, hz)].replaceable) return false;
   if (!IS_SOLID[w.getBlock(c.x, c.y - 1, c.z)] || !IS_SOLID[w.getBlock(hx, c.y - 1, hz)]) return false;
   if (blockedByEntity(game, c.x, c.y, c.z) || blockedByEntity(game, hx, c.y, hz)) return false;
-  w.setBlock(c.x, c.y, c.z, bedId(0, f));
-  w.setBlock(hx, c.y, hz, bedId(1, f));
+  game.setBlockSynced(c.x, c.y, c.z, bedId(0, f));
+  game.setBlockSynced(hx, c.y, hz, bedId(1, f));
   finishPlace(game, B.WHITE_WOOL);
   return true;
 }
@@ -303,9 +303,9 @@ function placeBlock(game, t, itemId) {
   }
   if (!game.canStay(id, x, y, z)) return false;
   if (BLOCKS[id].solid && blockedByEntity(game, x, y, z)) return false;
-  if (!w.setBlock(x, y, z, id)) return false;
-  if (BLOCKS[id].container === 'furnace') w.setBlockEntity(x, y, z, newFurnace());
-  else if (BLOCKS[id].container === 'chest') w.setBlockEntity(x, y, z, newChest());
+  if (!game.setBlockSynced(x, y, z, id)) return false;
+  if (BLOCKS[id].container === 'furnace') game.setBlockEntitySynced(x, y, z, newFurnace());
+  else if (BLOCKS[id].container === 'chest') game.setBlockEntitySynced(x, y, z, newChest());
   game.net?.sendBlockEntity?.(x, y, z);
   finishPlace(game, id);
   game.blockUpdates(x, y, z);

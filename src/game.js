@@ -10,7 +10,7 @@ import { Inventory } from './inventory.js';
 import { raycast, selectionBox } from './raycast.js';
 import { Input } from './input.js';
 import { Sound } from './audio.js';
-import { Storage } from './storage.js';
+import { Storage, encodeEdits, decodeEdits, encodeBlockEntities, decodeBlockEntities } from './storage.js';
 import { UI } from './ui.js';
 import { Particles } from './particles.js';
 import { hashString } from './noise.js';
@@ -24,6 +24,7 @@ import { Weather } from './weather.js';
 import { Chat } from './chat.js';
 import { skyState } from './sky.js';
 import { rollLoot } from './structures.js';
+import { Net, serverUrl, DEFAULT_PORT } from './net.js';
 
 export const DEFAULT_SETTINGS = {
   renderDistance: 8,
@@ -179,6 +180,7 @@ export class Game {
   }
 
   startWorld(meta, saved) {
+    this.leaveServer();
     this.meta = meta;
     this.creative = meta.mode === 'creative';
     this.setWorld(new World({ seed: meta.seed, edits: saved?.edits, blockEntities: saved?.blockEntities }));
@@ -229,6 +231,11 @@ export class Game {
   }
 
   saveWorld() {
+    if (this.net && !this.net.host) {
+      // On someone else's server the server keeps our inventory.
+      if (this.state !== 'loading') this.net.savePlayer();
+      return true;
+    }
     if (!this.meta || !this.world || !this.player || this.state === 'loading') return false;
     return this.storage.saveWorld(this.meta, {
       player: this.player.toJSON(),
@@ -242,10 +249,107 @@ export class Game {
   saveAndQuit() {
     if (this.ui.screen === 'inventory') this.ui.closeInventory();
     this.saveWorld();
+    this.leaveServer();
     this.input.unlock();
     this.ui.setHudVisible(false);
     this.startPanorama();
     this.ui.show('title');
+  }
+
+  // --- Multiplayer ---------------------------------------------------------------------
+
+  // Joins a server: its world, time and weather replace the local game's.
+  async joinServer(address, name) {
+    const net = new Net(this);
+    this.ui.setMultiplayerStatus('Connecting…');
+    let welcome;
+    try {
+      welcome = await net.connect(serverUrl(address), { name });
+    } catch (err) {
+      this.ui.setMultiplayerStatus(err.message, true);
+      return false;
+    }
+    this.leaveServer();
+    this.net = net;
+    net.onClose = (reason) => this.disconnected(reason);
+    const wm = welcome.world;
+    this.meta = null;
+    this.creative = welcome.you?.creative ?? wm.mode === 'creative';
+    this.setWorld(new World({ seed: wm.seed, edits: decodeEdits(welcome.edits), blockEntities: decodeBlockEntities(welcome.blockEntities) }));
+    this.player = new Player();
+    // Everybody starts at the same world spawn; returning players continue
+    // where they left off.
+    if (welcome.you?.player) {
+      this.player.load(welcome.you.player);
+      this.needsSpawnFix = false;
+    } else {
+      const s = this.world.generator.findSpawn();
+      this.player.pos = [s.x, s.y + 1, s.z];
+      this.player.spawn = [...this.player.pos];
+      this.needsSpawnFix = true;
+    }
+    this.inventory = welcome.you?.inventory ? Inventory.fromJSON(welcome.you.inventory) : new Inventory();
+    if (!welcome.you && this.creative) CREATIVE_HOTBAR.forEach((id, i) => (this.inventory.slots[i] = { id, count: 64 }));
+    this.ticks = Number.isFinite(welcome.ticks) ? welcome.ticks : 1000;
+    this.weather = new Weather();
+    this.weather.fromJSON(welcome.weather);
+    this.mining = null;
+    this.target = null;
+    this.chat.lines = [];
+    this.beginLoading(`Joining ${wm.name}`);
+    this.chat.add(`Joined ${wm.name} as ${net.name}. ${net.players.size ? `${net.players.size + 1} players online.` : 'You are the only one here.'}`, '#ffff55');
+    return true;
+  }
+
+  // Shares this single-player world with other players on the network
+  // through the server started by the launcher or tools/server.mjs --lan.
+  async openToLan() {
+    if (this.net || !this.meta) return;
+    this.ui.setLanStatus('Opening…');
+    // The launcher passes its server's port in the URL (#lan=25565).
+    const page = globalThis.location;
+    const lanPort = Number(new URLSearchParams((page?.hash || '').slice(1)).get('lan')) || DEFAULT_PORT;
+    const address = page && /^https?:$/.test(page.protocol) ? page.host : `localhost:${lanPort}`;
+    const net = new Net(this);
+    net.host = true;
+    const w = this.world;
+    try {
+      await net.connect(serverUrl(address), {
+        name: this.settings.playerName || 'Player',
+        host: {
+          seed: w.seed, name: this.meta.name, mode: this.creative ? 'creative' : 'survival', edits: encodeEdits(w.edits),
+          blockEntities: encodeBlockEntities(w.blockEntities), ticks: this.ticks, weather: this.weather.toJSON(),
+        },
+      });
+    } catch (err) {
+      this.ui.setLanStatus(`${err.message} To host, start ClaudeCraft.exe or run "node tools/server.mjs --lan" first.`, true);
+      return;
+    }
+    this.net = net;
+    net.onClose = (reason) => {
+      this.net = null;
+      this.chat.add(`LAN game closed: ${reason}`, '#ff5555');
+    };
+    const where = (net.addresses.length ? net.addresses : ['<this computer>']).map((a) => `http://${a}:${net.port}/`).join(' or ');
+    this.chat.add(`Local game hosted on port ${net.port}. Friends on your network can join at ${where}`, '#ffff55');
+    this.ui.setLanStatus('');
+    this.resume();
+  }
+
+  leaveServer() {
+    if (!this.net) return;
+    const net = this.net;
+    this.net = null;
+    net.disconnect();
+  }
+
+  disconnected(reason) {
+    this.net = null;
+    if (this.ui.screen === 'inventory') this.ui.closeInventory();
+    this.input.unlock();
+    this.ui.setHudVisible(false);
+    this.startPanorama();
+    this.ui.showDisconnected(reason);
   }
 
   // --- State transitions ------------------------------------------------------------
@@ -305,8 +409,9 @@ export class Game {
       // missing one means a generated chest: fill it with the loot of the
       // structure it is in.
       if (type === 'chest') be.slots = rollLoot(this.world.generator.structures.lootAt(x, y, z) || 'village', x, y, z);
-      this.world.setBlockEntity(x, y, z, be);
+      this.setBlockEntitySynced(x, y, z, be);
     }
+    this.containerPos = [x, y, z];
     this.openInventory({ type, entity: be });
   }
 
@@ -473,12 +578,14 @@ export class Game {
     }
 
     this.world.update(pcx, pcz, rd, playing ? 6 : 12, this.buildMesh);
+    this.net?.update(dt);
     if (this.state !== 'paused' && this.state !== 'inventory') this.particles.update(dt, this.world);
-    const simulate = this.state === 'playing' || this.state === 'inventory' || this.state === 'chat';
+    // Online the world keeps going while you are in a menu or dead.
+    const simulate = this.state === 'playing' || this.state === 'inventory' || this.state === 'chat' || (!!this.net && (this.state === 'paused' || this.state === 'dead'));
     if (simulate) this.weather.update(dt, this, !this.net || this.net.isAuthority);
     if (simulate && this.world.isReady(player.pos[0], player.pos[2])) {
       this.entities.update(dt, skyState(this.ticks, this.weather.rain));
-      tickFurnaces(this, dt);
+      if (!this.net || this.net.isAuthority) tickFurnaces(this, dt);
       tickCrops(this, dt);
     }
     if (this.pendingEvents.length) {
@@ -548,8 +655,11 @@ export class Game {
       boltMesh: this.weather.buildBoltMesh(camPos),
       eating: this.eating ? 1 : 0,
     });
+    if (this.net) this.net.updateNameTags(this.renderer.viewProj, camPos, this.canvas.clientWidth, this.canvas.clientHeight);
 
     // HUD
+    this.ui.showPlayerList(this.net && this.state === 'playing' && this.input.isDown('Tab')
+      ? [this.net.name, ...[...this.net.players.values()].map((rp) => rp.name)] : null);
     this.ui.updateHotbar(this.inventory);
     this.ui.updateStatus(player, this.creative);
     this.ui.setTint(player.headInLava ? 'lava' : player.headInWater ? 'water' : '');
@@ -617,6 +727,7 @@ export class Game {
         this.eating = null;
         this.bowCharge = -1;
         this.sleeping = null;
+        this.net?.sendDeath();
         this.dropEverything();
         this.input.unlock();
         this.ui.show('death');
@@ -637,6 +748,10 @@ export class Game {
     const t = this.target;
     const mobHit = this.entities.raycast(eye, dir, this.creative ? 5 : 3.5);
     this.targetMob = mobHit && (!t || mobHit.t < t.distance) ? mobHit.entity : null;
+    // Other players can be hit too.
+    const pvp = this.net?.raycastPlayers(eye, dir, this.creative ? 5 : 3.5);
+    this.targetPlayer = pvp && (!t || pvp.t < t.distance) && (!mobHit || pvp.t < mobHit.t) ? pvp.player : null;
+    if (this.targetPlayer) this.targetMob = null;
     this.useCooldown -= dt;
     this.breakDelay -= dt;
     this.attackCooldown -= dt;
@@ -646,6 +761,9 @@ export class Game {
     if (this.targetMob) {
       this.mining = null;
       if (pressed.includes(0) && this.attackCooldown <= 0) this.attack(this.targetMob);
+    } else if (this.targetPlayer) {
+      this.mining = null;
+      if (pressed.includes(0) && this.attackCooldown <= 0) this.attackPlayer(this.targetPlayer);
     } else if (input.buttons.has(0) && t) {
       if (this.creative) {
         if (pressed.includes(0) || this.breakDelay <= 0) {
@@ -784,47 +902,45 @@ export class Game {
     this.entities.primeTNT(x, y, z, fuse);
   }
 
+  attackPlayer(rp) {
+    const p = this.player;
+    const item = ITEMS.get(this.inventory.selectedId);
+    let dmg = item ? item.damage : 1;
+    if (!p.onGround && p.vel[1] < -1 && !p.flying) dmg *= 1.5;
+    if (!rp.creative) this.net.sendDamage(rp.id, dmg, p.pos, 6);
+    this.sound.hit?.();
+    if (item?.tool) this.damageHeld(item.tool.type === 'sword' ? 1 : 2);
+    p.addExhaustion(0.1, this.creative);
+    this.attackCooldown = 0.25;
+    this.swing = 1;
+  }
+
   useOnMob(mob) {
     const inv = this.inventory;
-    const it = inv.selectedStack ? ITEMS.get(inv.selectedStack.id) : null;
-    if (mob.def.tameable) {
-      // Taming with bones, feeding and telling a tamed wolf to sit.
-      const ref = this.entities.localRef;
-      let r;
-      if (this.net && !this.net.isAuthority) {
-        this.net.sendMobUse(mob.id, it?.id ?? null);
-        r = !mob.tamed && it?.id === I.BONE && !mob.target ? 'consume' : mob.tamed && mob.owner === ref ? 'use' : null;
-      } else r = this.entities.interactMob(mob, it?.id ?? null, ref);
-      if (r) {
-        if (r === 'consume' && !this.creative) inv.take(inv.selected, 1);
-        this.swing = 1;
-        return true;
-      }
-    }
-    if (!it) return false;
-    if (it.id === I.SHEARS && mob.type === 'sheep' && !mob.sheared) {
-      mob.sheared = true;
-      mob.woolTimer = 60 + Math.random() * 60;
-      const n = 1 + Math.floor(Math.random() * 3);
-      this.entities.dropItem({ id: mob.woolColor ?? B.WHITE_WOOL, count: n }, mob.pos[0], mob.pos[1] + 1, mob.pos[2]);
+    const id = inv.selectedStack?.id ?? null;
+    // Shearing, milking, taming, feeding and telling a tamed wolf to sit. In
+    // multiplayer the player running the simulation applies the effect on
+    // the mob and this client predicts what happens to the held item.
+    const remote = this.net && !this.net.isAuthority;
+    const r = this.entities.interactMob(mob, id, this.entities.localRef, !remote);
+    if (!r) return false;
+    if (remote) this.net.sendMobUse(mob.id, id);
+    if (r === 'consume' && !this.creative) inv.take(inv.selected, 1);
+    else if (r === 'tool') {
       this.sound.shear?.();
       this.damageHeld(1);
-      this.net?.sendMobState?.(mob);
-      this.swing = 1;
-      return true;
-    }
-    if (it.id === I.BUCKET && mob.type === 'cow') {
+    } else if (r === 'milk') {
       if (!this.creative) {
         inv.take(inv.selected, 1);
         if (!inv.slots[inv.selected]) inv.slots[inv.selected] = { id: I.MILK_BUCKET, count: 1 };
         else if (inv.add(I.MILK_BUCKET, 1)) this.entities.dropItem({ id: I.MILK_BUCKET, count: 1 }, ...this.player.eye());
       }
       this.sound.splash();
-      this.swing = 1;
-      return true;
     }
-    return false;
+    this.swing = 1;
+    return true;
   }
+
 
   // Buckets and lily pads target the first liquid block in reach.
   liquidTarget() {
@@ -860,9 +976,7 @@ export class Game {
     const spread = 0.01;
     const v = [d[0] + (Math.random() - 0.5) * spread, d[1] + (Math.random() - 0.5) * spread, d[2] + (Math.random() - 0.5) * spread];
     const dmg = Math.ceil(power * 6) + (power >= 1 ? Math.floor(Math.random() * 3) : 0);
-    const a = this.entities.shoot('arrow', [eye[0] + d[0] * 0.5, eye[1] - 0.1, eye[2] + d[2] * 0.5], [v[0] * speed, v[1] * speed, v[2] * speed], this.entities.localRef, dmg);
-    a.pickup = !this.creative;
-    this.net?.sendProjectile?.(a);
+    this.entities.shoot('arrow', [eye[0] + d[0] * 0.5, eye[1] - 0.1, eye[2] + d[2] * 0.5], [v[0] * speed, v[1] * speed, v[2] * speed], this.entities.localRef, dmg, !this.creative);
     this.damageHeld(1);
     this.sound.bow?.(power);
   }
@@ -942,8 +1056,7 @@ export class Game {
     const out = { ...s, count: n };
     inv.take(inv.selected, n);
     const p = this.player, eye = p.eye(), d = p.lookDir();
-    const e = this.entities.dropItem(out, eye[0] + d[0] * 0.3, eye[1] - 0.3, eye[2] + d[2] * 0.3, [d[0] * 5, d[1] * 5 + 2, d[2] * 5]);
-    e.pickupDelay = 2;
+    this.entities.dropItem(out, eye[0] + d[0] * 0.3, eye[1] - 0.3, eye[2] + d[2] * 0.3, [d[0] * 5, d[1] * 5 + 2, d[2] * 5], 2);
     this.ui.hotbarSig = '';
   }
 
@@ -990,8 +1103,20 @@ export class Game {
     s.time += dt;
     this.ui.setSleepFade(Math.min(1, s.time / 2.5));
     if (s.time >= 3) {
-      this.ticks = 0;
-      this.net?.sendTime?.(this.ticks);
+      const night = this.ticks > 12500 && this.ticks < 23500;
+      if (night && this.net) {
+        // Online the night is skipped once every player is asleep.
+        const all = [...this.net.players.values()].every((rp) => rp.sleeping);
+        if (!all || !this.net.isAuthority) {
+          if (!s.waiting) this.ui.toast('Waiting for the other players to sleep…');
+          s.waiting = true;
+          return;
+        }
+      }
+      if (night) {
+        this.ticks = 0;
+        this.net?.sendTime(this.ticks);
+      }
       this.sleeping = null;
       this.player.pos = [s.bed[0] + 0.5, s.bed[1] + 0.6, s.bed[2] + 0.5];
       this.ui.setSleepFade(0);
@@ -1005,7 +1130,7 @@ export class Game {
     if (!this.setBlockSynced(x, y, z, B.AIR)) return;
     this.sound.breakBlock(id);
     this.particles.burst(x, y, z, id);
-    const be = BLOCKS[id].container ? this.world.removeBlockEntity(x, y, z) : null;
+    const be = BLOCKS[id].container ? this.removeBlockEntitySynced(x, y, z) : null;
     if (be) for (const st of be.slots) if (st) this.entities.dropItem(st, x + 0.5, y + 0.5, z + 0.5);
     // Doors and beds are two blocks: take the other half with this one.
     const partner = partnerOf(id, x, y, z);
@@ -1042,6 +1167,26 @@ export class Game {
     const ok = this.world.setBlock(x, y, z, id);
     if (ok) this.net?.sendBlock(x, y, z, id);
     return ok;
+  }
+
+  // Chest and furnace contents, shared the same way.
+  setBlockEntitySynced(x, y, z, be) {
+    this.world.setBlockEntity(x, y, z, be);
+    this.net?.sendBlockEntity(x, y, z, be);
+  }
+
+  removeBlockEntitySynced(x, y, z) {
+    const be = this.world.removeBlockEntity(x, y, z);
+    if (be) this.net?.sendBlockEntity(x, y, z, null);
+    return be;
+  }
+
+  // The open chest or furnace was changed through the inventory screen.
+  containerChanged() {
+    const pos = this.containerPos;
+    if (!this.net || !pos) return;
+    const be = this.world.getBlockEntity(pos[0], pos[1], pos[2]);
+    if (be) this.net.sendBlockEntity(pos[0], pos[1], pos[2], be);
   }
 
   canStay(id, x, y, z) {

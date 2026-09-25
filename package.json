@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "start": "node tools/serve.mjs",
+    "server": "node tools/server.mjs",
     "build": "node tools/build.mjs",
     "test": "node --test \"test/*.test.mjs\"",
     "smoke": "node tools/smoke.mjs",

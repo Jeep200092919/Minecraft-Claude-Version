@@ -66,7 +66,53 @@ export class UI {
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
     this.screen = name;
     if (name) $(`screen-${name}`).classList.add('active');
+    if (name === 'pause') {
+      const g = this.game;
+      $('btn-lan').hidden = !!g.net || !g.meta;
+      $('btn-quit').textContent = g.net && !g.net.host ? 'Disconnect' : 'Save and Quit to Title';
+    }
     if (name !== 'inventory') this.hideTooltip();
+  }
+
+  showMultiplayer() {
+    const s = this.game.settings;
+    if (!s.playerName) s.playerName = `Player${100 + Math.floor(Math.random() * 900)}`;
+    $('mp-name').value = s.playerName;
+    const page = globalThis.location;
+    $('mp-address').value = s.serverAddress ?? (page && /^https?:$/.test(page.protocol) ? page.host : '');
+    this.setMultiplayerStatus('');
+    this.show('multiplayer');
+  }
+
+  setMultiplayerStatus(text, error = false) {
+    const el = $('mp-status');
+    el.textContent = text;
+    el.classList.toggle('error', error);
+  }
+
+  setLanStatus(text, error = false) {
+    const el = $('lan-status');
+    el.textContent = text;
+    el.classList.toggle('error', error);
+  }
+
+  showDisconnected(reason) {
+    $('disconnect-reason').textContent = reason;
+    this.show('disconnected');
+  }
+
+  // Tab: who is online.
+  showPlayerList(names) {
+    const el = $('playerlist');
+    const sig = names ? names.join('\n') : '';
+    if (sig === this.playerListSig) return;
+    this.playerListSig = sig;
+    el.classList.toggle('hidden', !names);
+    el.replaceChildren(...(names || []).map((n) => {
+      const row = document.createElement('div');
+      row.textContent = n;
+      return row;
+    }));
   }
 
   setHudVisible(v) {
@@ -76,6 +122,8 @@ export class UI {
   bindButtons() {
     const actions = {
       singleplayer: () => this.showWorlds(),
+      multiplayer: () => this.showMultiplayer(),
+      'open-lan': () => this.game.openToLan(),
       controls: () => { this.controlsReturn = 'title'; this.show('controls'); },
       'controls-game': () => { this.controlsReturn = 'pause'; this.show('controls'); },
       'controls-done': () => this.show(this.controlsReturn),
@@ -115,6 +163,17 @@ export class UI {
       $('mode-hint').textContent = creative
         ? 'Unlimited blocks, instant breaking, flying (double-tap Space), no damage.'
         : 'Gather resources, craft tools, survive falls, lava and drowning.';
+    });
+    $('join-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.game.sound.unlock();
+      const name = $('mp-name').value.trim() || 'Player';
+      const address = $('mp-address').value.trim();
+      const s = this.game.settings;
+      s.playerName = name;
+      s.serverAddress = address;
+      this.game.saveSettings();
+      this.game.joinServer(address, name);
     });
     $('create-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -667,8 +726,7 @@ export class UI {
         if (g.creative) this.cursor = null;
         else {
           const p = g.player, eye = p.eye(), d = p.lookDir();
-          const it = g.entities.dropItem(this.cursor, eye[0] + d[0] * 0.3, eye[1] - 0.3, eye[2] + d[2] * 0.3, [d[0] * 4, 2, d[2] * 4]);
-          if (it) it.pickupDelay = 2;
+          g.entities.dropItem(this.cursor, eye[0] + d[0] * 0.3, eye[1] - 0.3, eye[2] + d[2] * 0.3, [d[0] * 4, 2, d[2] * 4], 2);
           this.cursor = null;
         }
         this.refreshInventory();
@@ -719,6 +777,7 @@ export class UI {
       this.onContainerClick(i, button, shift);
     }
     this.game.sound.click();
+    if (this.container) this.game.containerChanged();
     this.refreshInventory();
   }
 

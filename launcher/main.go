@@ -5,6 +5,10 @@
 // Microsoft Edge / Google Chrome "app" window, falling back to the default
 // web browser. Saves live in that browser profile, so they persist between
 // launches.
+//
+// While the game is open the launcher also runs the LAN multiplayer server
+// (server.go): "Open to LAN" in the pause menu shares the world, and friends
+// on the same network join by opening http://<this computer>:25565/.
 package main
 
 import (
@@ -15,12 +19,23 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"time"
 )
 
 //go:embed claudecraft.html
 var gameHTML []byte
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--server" {
+		// Headless: only the LAN server (for a spare computer, or testing).
+		lan := newLANServer(gameHTML)
+		if err := lan.listen(); err != nil {
+			fail("Could not start the server: " + err.Error())
+		}
+		os.Stdout.WriteString("ClaudeCraft LAN server on port " + strconv.Itoa(lan.port) + "\n")
+		select {}
+	}
 	dir := appDir()
 	_ = os.MkdirAll(dir, 0o755)
 	page := filepath.Join(dir, "claudecraft.html")
@@ -30,6 +45,14 @@ func main() {
 		}
 	}
 	pageURL := (&url.URL{Scheme: "file", Path: toURLPath(page)}).String()
+
+	// The LAN server; the page learns its port from the URL fragment.
+	lan := newLANServer(gameHTML)
+	if lan.listen() == nil {
+		pageURL += "#lan=" + strconv.Itoa(lan.port)
+	} else {
+		lan = nil
+	}
 
 	profile := filepath.Join(dir, "browser-profile")
 	for _, browser := range browserCandidates() {
@@ -45,11 +68,22 @@ func main() {
 			"--disable-features=Translate",
 		)
 		if cmd.Start() == nil {
+			if lan != nil {
+				// Keep serving LAN players until the game window closes.
+				cmd.Wait()
+			}
 			return
 		}
 	}
-	if err := openDefault(page); err != nil {
+	if err := openDefault(pageURL); err != nil {
 		fail("Could not open a web browser. Open this file manually: " + page)
+	}
+	if lan != nil {
+		// We can't tell when a regular browser tab closes: stop once nobody
+		// has used the server for a while.
+		for lan.idleFor() < 30*time.Minute {
+			time.Sleep(time.Minute)
+		}
 	}
 }
 

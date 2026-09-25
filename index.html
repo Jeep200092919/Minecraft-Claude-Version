@@ -16,6 +16,8 @@
     <div id="hurt"></div>
     <pre id="debug" class="hidden"></pre>
     <div id="toast"></div>
+    <div id="nametags"></div>
+    <div id="playerlist" class="hidden"></div>
     <div id="sleep-fade"></div>
     <div id="chat">
       <div id="chat-lines"></div>
@@ -43,6 +45,7 @@
     <p class="splash">Made from scratch!</p>
     <div class="menu">
       <button data-action="singleplayer">Singleplayer</button>
+      <button data-action="multiplayer">Multiplayer</button>
       <button data-action="controls">Controls</button>
       <button data-action="options-title">Options…</button>
     </div>
@@ -79,6 +82,28 @@
     </form>
   </section>
 
+  <section id="screen-multiplayer" class="screen dirt">
+    <h2>Play Multiplayer</h2>
+    <form id="join-form" class="menu" autocomplete="off">
+      <label>Your Name<input id="mp-name" maxlength="16" pattern="[A-Za-z0-9_]{1,16}" placeholder="Steve"></label>
+      <label>Server Address<input id="mp-address" maxlength="80" placeholder="localhost:25565"></label>
+      <p class="hint" id="mp-status"></p>
+      <div class="row">
+        <button type="submit">Join Server</button>
+        <button type="button" data-action="back-title">Cancel</button>
+      </div>
+      <p class="hint small">Everyone spawns at the same place in the server's world.
+        Host a server with <code>node tools/server.mjs</code>, or open a single-player world to your
+        network with <b>Open to LAN</b> in the pause menu (needs ClaudeCraft.exe or <code>node tools/server.mjs --lan</code>).</p>
+    </form>
+  </section>
+
+  <section id="screen-disconnected" class="screen dirt">
+    <h2>Disconnected</h2>
+    <p class="hint" id="disconnect-reason"></p>
+    <div class="menu"><button data-action="back-title">Back to Title Screen</button></div>
+  </section>
+
   <section id="screen-loading" class="screen dirt">
     <h2 id="loading-title">Generating world</h2>
     <div class="progress"><div id="loading-bar"></div></div>
@@ -91,7 +116,9 @@
       <button data-action="resume">Back to Game</button>
       <button data-action="options-game">Options…</button>
       <button data-action="controls-game">Controls</button>
-      <button data-action="save-quit">Save and Quit to Title</button>
+      <button data-action="open-lan" id="btn-lan">Open to LAN</button>
+      <p class="hint" id="lan-status"></p>
+      <button data-action="save-quit" id="btn-quit">Save and Quit to Title</button>
     </div>
   </section>
 
@@ -131,6 +158,10 @@
         <dt>Middle click</dt><dd>Pick block</dd>
         <dt>1–9 / wheel</dt><dd>Select hotbar slot</dd>
         <dt>E</dt><dd>Inventory &amp; crafting</dd>
+        <dt>Q</dt><dd>Drop item (Ctrl+Q: whole stack)</dd>
+        <dt>T / Enter</dt><dd>Chat &nbsp;·&nbsp; <b>/</b> commands (/help)</dd>
+        <dt>Tab</dt><dd>Players online (multiplayer)</dd>
+        <dt>F5</dt><dd>Third-person camera</dd>
         <dt>F3</dt><dd>Debug info</dd>
         <dt>F1</dt><dd>Hide HUD</dd>
         <dt>Esc</dt><dd>Pause menu</dd>

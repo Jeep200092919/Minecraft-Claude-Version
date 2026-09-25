@@ -21,6 +21,19 @@ export class Weather {
     this.timer = duration;
   }
 
+  // Shared with other players in multiplayer.
+  toJSON() {
+    return { rain: this.rain, raining: this.raining, thunder: this.thunder, timer: this.timer };
+  }
+
+  fromJSON(w) {
+    if (!w) return;
+    this.raining = !!w.raining;
+    this.thunder = !!w.thunder;
+    if (Number.isFinite(w.timer)) this.timer = w.timer;
+    if (Number.isFinite(w.rain) && Math.abs(w.rain - this.rain) > 0.5) this.rain = w.rain;
+  }
+
   get kind() {
     return this.thunder ? 'thunder' : this.raining ? 'rain' : 'clear';
   }
@@ -54,7 +67,8 @@ export class Weather {
   }
 
   // A lightning bolt from the clouds to the ground at (x, z).
-  strike(game, x, z, seed = Math.random()) {
+  // `remote`: a bolt another player's game created (it already hurt the mobs).
+  strike(game, x, z, seed = Math.random(), remote = false) {
     const w = game.world;
     const ground = w.isReady(x, z) ? w.heightAt(x, z) + 1 : 64;
     const pts = [];
@@ -73,6 +87,7 @@ export class Weather {
     // Mobs and players struck take damage.
     const p = game.player;
     if (Math.hypot(p.pos[0] - x - 0.5, p.pos[2] - z - 0.5) < 2) p.damage(5, game.pendingEvents, game.creative);
+    if (remote) return;
     for (const e of game.entities.list) {
       if (e.kind === 'mob' && Math.hypot(e.pos[0] - x - 0.5, e.pos[2] - z - 0.5) < 2) e.hurt(5, null, game.entities);
     }

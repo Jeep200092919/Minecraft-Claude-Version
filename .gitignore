@@ -5,3 +5,4 @@ screenshots/
 # generated for go:embed by tools/package.mjs
 launcher/claudecraft.html
 dist/
+worlds/

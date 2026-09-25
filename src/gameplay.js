@@ -38,6 +38,8 @@ export function tickFurnace(be, dt) {
   }
 }
 
+const NET_SIGS = new WeakMap(); // furnace -> last state sent to other players
+
 export function tickFurnaces(game, dt) {
   const world = game.world;
   for (const [key, be] of world.blockEntities) {
@@ -48,12 +50,20 @@ export function tickFurnaces(game, dt) {
     const id = world.getBlock(x, y, z);
     const b = BLOCKS[id];
     if (b.container !== 'furnace') {
-      world.removeBlockEntity(x, y, z);
+      game.removeBlockEntitySynced(x, y, z);
       continue;
     }
     const lit = be.burn > 0;
     const want = furnaceVariant(b.facing, lit);
     if (want !== id) game.setBlockSynced(x, y, z, want);
+    // Online, other players see the furnace's progress about twice a second.
+    if (game.net) {
+      const sig = `${be.slots.map((s) => (s ? `${s.id}x${s.count}` : '-')).join()}|${Math.ceil(be.burn * 2)}|${Math.ceil(be.cook * 2)}`;
+      if (sig !== NET_SIGS.get(be)) {
+        NET_SIGS.set(be, sig);
+        game.net.sendBlockEntity(x, y, z, be);
+      }
+    }
   }
 }
 
@@ -121,7 +131,7 @@ export function explode(game, x, y, z, power) {
         if (id === B.TNT) game.entities.primeTNT(bx, by, bz, 0.4 + Math.random());
         else if (Math.random() < 1 / power) game.dropBlockLoot(id, bx, by, bz, 0);
         if (b.container) {
-          const be = world.removeBlockEntity(bx, by, bz);
+          const be = game.removeBlockEntitySynced(bx, by, bz);
           if (be) for (const st of be.slots) if (st) game.entities.dropItem(st, bx + 0.5, by + 0.5, bz + 0.5);
         }
       }
@@ -135,8 +145,13 @@ export function explode(game, x, y, z, power) {
   const pd = hurt(p.pos, 1.8);
   if (pd > 0) {
     p.damage(pd, game.pendingEvents, game.creative);
-    game.net?.sendExplosion?.(x, y, z, power);
     p.knockback(p.pos[0] - x, p.pos[2] - z, 8);
+  }
+  // Other players see the blast and get hurt by it too.
+  game.net?.sendExplosion(x, y, z, power);
+  for (const rp of game.net?.players.values() || []) {
+    const d = hurt(rp.pos, 1.8);
+    if (d > 0) game.net.sendDamage(rp.id, d, [x, y, z], 8, 0);
   }
   for (const e of game.entities.list) {
     if (e.kind !== 'mob' || e.dead) continue;

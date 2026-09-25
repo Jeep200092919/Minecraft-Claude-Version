@@ -473,3 +473,19 @@ input:not([type]):focus { border-color: #fff; }
 }
 #chat.open #chat-input { display: block; }
 #chat.open #chat-lines div { background: rgba(0, 0, 0, 0.6); }
+
+/* --- Multiplayer ------------------------------------------------------------- */
+#nametags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.nametag {
+  position: absolute; left: 0; top: 0; padding: 1px 5px 2px; white-space: nowrap;
+  font-family: var(--ui-font); font-size: 16px; color: #fff; background: rgba(0, 0, 0, 0.35);
+}
+#playerlist {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%); min-width: 220px; padding: 4px;
+  background: rgba(0, 0, 0, 0.45); font-family: var(--ui-font); font-size: 16px; color: #fff;
+}
+#playerlist div { padding: 2px 8px; background: rgba(255, 255, 255, 0.08); margin: 1px 0; }
+#playerlist.hidden { display: none; }
+.hint.error { color: #ff5555; }
+.hint.small { font-size: 13px; max-width: 520px; margin-top: 10px; }
+.hint code { color: #e0e0e0; }

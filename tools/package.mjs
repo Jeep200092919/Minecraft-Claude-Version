@@ -36,7 +36,20 @@ Left click      break / attack    Right click    place / open chest, furnace
 Hold right      eat food          Middle click   pick block
 1-9 / wheel     hotbar slot       F3             debug info
 E               inventory         Esc            pause menu
+Q               drop item         T / Enter      chat, / for commands
+F5              third person      Tab            players online
 F1              hide HUD
+
+MULTIPLAYER
+-----------
+Everyone joins the same world and spawns at the same place.
+LAN:     start ClaudeCraft.exe, open a world, press Esc and click
+         "Open to LAN". Friends on the same network open the address shown
+         in chat (http://<your computer>:25565/) in their browser, or use
+         Multiplayer -> Join Server. Allow ClaudeCraft through the Windows
+         firewall when asked.
+Server:  with Node.js installed, run  node tools/server.mjs  from the source
+         code (see the GitHub page) for an always-on server.
 
 Shaders (shadows, reflective water, bloom, god rays) are on by default;
 turn them off in Options -> Shaders if the game runs slowly.
