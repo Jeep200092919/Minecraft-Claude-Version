@@ -13,6 +13,7 @@ const GRAVITY = 32;
 const CAPS = { creature: 14, monster: 12, water: 5, ambient: 4 };
 // The night-time monster mix, weighted roughly like the original.
 const MONSTERS = [['zombie', 30], ['skeleton', 25], ['creeper', 20], ['spider', 20], ['enderman', 4]];
+const NETHER_MONSTERS = [['zombified_piglin', 40], ['magma_cube', 12], ['ghast', 6]];
 const WOLF_FOOD = new Set([I.RAW_BEEF, I.STEAK, I.RAW_PORKCHOP, I.COOKED_PORKCHOP, I.RAW_CHICKEN, I.COOKED_CHICKEN,
   I.RAW_MUTTON, I.COOKED_MUTTON, I.RAW_RABBIT, I.COOKED_RABBIT, I.ROTTEN_FLESH]);
 // Natural blocks an enderman may pick up and carry around.
@@ -46,7 +47,7 @@ let nextId = 1;
 // Mob fields shared with other players (see snapshot()), with their defaults.
 const MOB_SYNC = {
   sheared: false, woolColor: undefined, tamed: false, owner: null, sitting: false, carry: 0, fuse: 0, burn: 0, aim: 0,
-  laser: 0, roost: false, swing: 0, stare: 0, swimPhase: 0, baby: 0, onGround: false, squish: 0,
+  laser: 0, roost: false, swing: 0, stare: 0, swimPhase: 0, baby: 0, onGround: false, squish: 0, charge: 0,
 };
 const KINDS = { m: 'mob', i: 'item', x: 'xp', p: 'projectile', t: 'tnt' };
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -90,6 +91,7 @@ class Mob {
     this.swing = 0; // attack animation, 1 -> 0
     this.aim = 0; // skeleton bow draw
     this.stare = 0; // enderman being looked at
+    this.charge = 0; // ghast fireball wind-up
     this.size = 1; // slimes
     this.squish = 0;
     this.hopTimer = Math.random();
@@ -334,11 +336,12 @@ export class EntityManager {
     return t;
   }
 
-  // Nearest mob hit by a ray, or null.
-  raycast(origin, dir, maxDist) {
+  // Nearest mob hit by a ray; with `fireballs`, ghast fireballs too (the
+  // player can punch them back).
+  raycast(origin, dir, maxDist, fireballs = false) {
     let best = null;
     for (const e of this.list) {
-      if (e.kind !== 'mob' || e.dead) continue;
+      if (e.kind === 'projectile' ? !fireballs || e.type !== 'fireball' : e.kind !== 'mob' || e.dead) continue;
       const t = rayBox(origin, dir, bodyBox(e));
       if (t !== null && t <= maxDist && (!best || t < best.t)) best = { entity: e, t };
     }
@@ -355,10 +358,14 @@ export class EntityManager {
     }
     if (m.carry) this.dropItem({ id: m.carry, count: 1 }, x, y + 1, z);
     if (def.sizes) {
+      const roll = ([id, min, max]) => {
+        const n = min + Math.floor(Math.random() * (max - min + 1));
+        if (n) this.dropItem({ id, count: n }, x, y + 0.3, z);
+      };
       if (m.size === 1) {
-        const n = Math.floor(Math.random() * 3);
-        if (n) this.dropItem({ id: I.SLIMEBALL, count: n }, x, y + 0.3, z);
+        if (def.smallDrop) roll(def.smallDrop);
       } else {
+        if (def.splitDrop) roll(def.splitDrop);
         // Big slimes split into two to four smaller ones.
         const n = 2 + Math.floor(Math.random() * 3);
         for (let i = 0; i < n; i++) {
@@ -388,8 +395,8 @@ export class EntityManager {
         m.angerTime = 25;
         m.sitting = false;
       }
-      if (def.tameable && !m.tamed) {
-        for (const o of this.mobsNear(m.pos, 16)) {
+      if ((def.tameable && !m.tamed) || def.packAnger) {
+        for (const o of this.mobsNear(m.pos, def.packAnger ? 32 : 16)) {
           if (o.type === m.type && !o.tamed) { o.target = { ref: attacker }; o.angerTime = 25; }
         }
       }
@@ -673,6 +680,27 @@ export class EntityManager {
     this.spawnIfFits(type, x + 0.5, y, z + 0.5);
   }
 
+  // Zombified piglins in groups, magma cubes and the odd ghast, in any light.
+  trySpawnNether(p) {
+    const w = this.world;
+    const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 34;
+    const x = Math.floor(p[0] + Math.cos(a) * d), z = Math.floor(p[2] + Math.sin(a) * d);
+    if (!w.isReady(x, z)) return;
+    const type = weighted(NETHER_MONSTERS);
+    if (type === 'ghast' && this.countNear((e) => e.type === 'ghast', p, 96) >= 2) return;
+    for (let tries = 0; tries < 8; tries++) {
+      const y = 33 + Math.floor(Math.random() * 80);
+      if (type === 'ghast') {
+        if (this.spawnIfFits('ghast', x + 0.5, y, z + 0.5)) return;
+        continue;
+      }
+      if (!this.canStandAt(x, y, z) || Math.hypot(x - p[0], y - p[1], z - p[2]) < 20) continue;
+      const n = type === 'zombified_piglin' ? 2 + Math.floor(Math.random() * 3) : 1;
+      for (let i = 0; i < n; i++) this.spawnIfFits(type, x + 0.5 + (i % 2), y, z + 0.5 + (i >> 1));
+      return;
+    }
+  }
+
   // Squid in open water at least three blocks deep.
   trySpawnSquid(p) {
     const w = this.world;
@@ -742,6 +770,10 @@ export class EntityManager {
       for (const pl of everyone) {
         const p = pl.pos;
         const near = (cat, r) => this.countNear((e) => mobCategory(e.def) === cat, p, r);
+        if (this.world.dimension === 'nether') {
+          if (near('monster', 96) < CAPS.monster) this.trySpawnNether(p);
+          continue;
+        }
         if (Math.random() < 0.4 && near('creature', 96) < CAPS.creature) this.trySpawnCreature(p);
         if (near('monster', 96) < CAPS.monster) this.trySpawnHostile(p, sky.day);
         if (Math.random() < 0.3 && near('water', 64) < CAPS.water) this.trySpawnSquid(p);
@@ -750,7 +782,7 @@ export class EntityManager {
       }
     }
     this.villageTimer -= dt;
-    if (this.villageTimer <= 0) {
+    if (this.villageTimer <= 0 && this.world.dimension !== 'nether') {
       this.villageTimer = 3;
       for (const pl of everyone) this.spawnVillagers(pl.pos);
     }
@@ -915,9 +947,9 @@ export class EntityManager {
       return;
     }
     if (p.age > 30) { p.removed = true; return; }
-    const g = p.type === 'arrow' ? 20 : 12;
+    const g = p.type === 'arrow' ? 20 : p.type === 'fireball' ? 0 : 12;
     p.vel[1] -= g * dt;
-    const drag = Math.pow(0.99, dt * 20);
+    const drag = p.type === 'fireball' ? 1 : Math.pow(0.99, dt * 20);
     p.vel[0] *= drag; p.vel[1] *= drag; p.vel[2] *= drag;
     const speed = Math.hypot(...p.vel);
     const steps = Math.max(1, Math.ceil((speed * dt) / 0.25));
@@ -966,6 +998,7 @@ export class EntityManager {
       p.removed = true;
     } else {
       if (p.type === 'snowball') mob.hurt(mob.type === 'blaze' ? 3 : 0.01, p.pos, this, p.owner);
+      if (p.type === 'fireball') mob.hurt(p.damage, p.pos, this, p.owner);
       this.projectileBurst(p);
     }
     if (p.owner === this.localRef) game.sound.hit?.();
@@ -982,10 +1015,14 @@ export class EntityManager {
     this.projectileBurst(p);
   }
 
-  // Snowballs, eggs and pearls break on impact.
+  // Snowballs, eggs and pearls break on impact; fireballs explode.
   projectileBurst(p) {
     const game = this.game;
     p.removed = true;
+    if (p.type === 'fireball') {
+      game.explode(p.pos[0], p.pos[1], p.pos[2], 1);
+      return;
+    }
     game.particles.smoke(p.pos[0], p.pos[1], p.pos[2], 6, 0.15, 0.08, p.type === 'ender_pearl' ? 0.9 : 0.05);
     if (p.type === 'egg' && Math.random() < 0.125) {
       const m = this.spawn('chicken', p.pos[0], p.pos[1], p.pos[2]);
@@ -1016,7 +1053,7 @@ export class EntityManager {
     const eye = [m.pos[0], m.pos[1] + m.h * 0.85, m.pos[2]];
     const bright = sky.day > 0.5 && w.getSkyLight(Math.floor(m.pos[0]), Math.floor(eye[1]), Math.floor(m.pos[2])) >= 12;
     let t = this.resolveTarget(m.target);
-    if (t && dist3(t.pos, m.pos) > 32) t = null;
+    if (t && dist3(t.pos, m.pos) > (def.ghast ? 80 : 32)) t = null;
     // Neutral mobs calm down; spiders lose interest in daylight.
     if (t && t.kind === 'player' && !def.hostile && m.angerTime <= 0) t = null;
     if (t && t.kind === 'player' && def.neutralInDay && bright && m.angerTime <= 0 && Math.random() < 0.1) t = null;
@@ -1024,7 +1061,7 @@ export class EntityManager {
     m.target = t ? (t.kind === 'mob' ? t : { ref: t.ref }) : null;
     if (!m.target && !m.sitting) {
       if (def.hostile && !(def.neutralInDay && bright)) {
-        const p = this.nearestPlayer(m.pos, 16);
+        const p = this.nearestPlayer(m.pos, def.ghast ? 64 : 16);
         if (p && this.canSee(eye, [p.pos[0], p.pos[1] + 1.6, p.pos[2]])) m.target = { ref: p.ref };
         else if (m.type === 'zombie') m.target = this.nearestMob(m.pos, 16, (o) => o.def.villager);
       } else if (def.defender) {
@@ -1098,7 +1135,8 @@ export class EntityManager {
     }
     const viewer = this.nearestPlayer(m.pos, 8, true);
 
-    if (def.flies) this.flyBat(m, dt);
+    if (def.ghast) this.flyGhast(m, dt);
+    else if (def.flies) this.flyBat(m, dt);
     else if (def.swims) this.swimAI(m, dt);
     else if (this.walkAI(m, dt, viewer) === 'exploded') return;
 
@@ -1113,7 +1151,7 @@ export class EntityManager {
     // Hazards.
     const ix = Math.floor(m.pos[0]), iz = Math.floor(m.pos[2]);
     const feet = world.getBlock(ix, Math.floor(m.pos[1] + 0.2), iz);
-    if (feet === B.LAVA) this.burnMob(m, dt, 4);
+    if (feet === B.LAVA && !def.fireImmune) this.burnMob(m, dt, 4);
     const exposed = world.getSkyLight(ix, Math.floor(eyeY), iz) >= 14;
     if (def.burnsInDay && sky.day > 0.6 && (sky.rain || 0) < 0.3 && !m.inWater && exposed) {
       m.burn = 1;
@@ -1334,6 +1372,42 @@ export class EntityManager {
     m.followYaw = yawTowards(m.pos, o.pos);
     m.followSpeed = m.def.speed * (d > 6 ? 1.2 : 0.8);
     return true;
+  }
+
+  // Ghasts drift through the Nether's caverns and spit fireballs at players.
+  flyGhast(m, dt) {
+    const w = this.world;
+    const t = this.resolveTarget(m.target);
+    m.flyTimer = (m.flyTimer ?? 0) - dt;
+    if (!m.flyTarget || m.flyTimer <= 0 || dist3(m.pos, m.flyTarget) < 2) {
+      m.flyTimer = 3 + Math.random() * 5;
+      m.flyTarget = [m.pos[0] + (Math.random() - 0.5) * 32, m.pos[1] + (Math.random() - 0.5) * 12, m.pos[2] + (Math.random() - 0.5) * 32];
+    }
+    const d = [m.flyTarget[0] - m.pos[0], m.flyTarget[1] - m.pos[1], m.flyTarget[2] - m.pos[2]];
+    const len = Math.hypot(...d) || 1;
+    const k = Math.min(1, dt * 1.5);
+    for (let i = 0; i < 3; i++) m.vel[i] += ((d[i] / len) * m.def.speed - m.vel[i]) * k;
+    const res = moveBody(w, m, m.vel[0] * dt, m.vel[1] * dt, m.vel[2] * dt);
+    if (res.collidedH || res.onGround) m.flyTarget = null;
+    const c = [m.pos[0], m.pos[1] + m.h / 2, m.pos[2]];
+    if (t) {
+      const aim = [t.pos[0] - c[0], t.pos[1] + (t.h ?? 1.8) * 0.5 - c[1], t.pos[2] - c[2]];
+      m.yaw += wrapAngle(Math.atan2(-aim[0], -aim[2]) - m.yaw) * Math.min(1, dt * 4);
+      if (m.seesTarget && Math.hypot(...aim) < 64) {
+        m.charge += dt;
+        if (m.charge >= 1) {
+          m.charge = -2.5;
+          const l = Math.hypot(...aim);
+          const from = [c[0] + (aim[0] / l) * 2.4, c[1] + (aim[1] / l) * 2.4, c[2] + (aim[2] / l) * 2.4];
+          this.shoot('fireball', from, aim.map((v) => (v / l) * 14), m, 6);
+          if (dist3(m.pos, this.game.player.pos) < 64) this.game.sound.mob('ghast', 'hurt');
+        }
+      } else m.charge = Math.min(0, m.charge + dt);
+    } else {
+      m.charge = Math.min(0, m.charge + dt);
+      if (Math.hypot(m.vel[0], m.vel[2]) > 0.2) m.yaw += wrapAngle(Math.atan2(-m.vel[0], -m.vel[2]) - m.yaw) * Math.min(1, dt * 2);
+    }
+    m.inWater = false;
   }
 
   // Bats flutter around caves and hang from ceilings.
@@ -1649,7 +1723,7 @@ export class EntityManager {
         continue;
       }
       if (e.kind === 'projectile') {
-        const itemId = { arrow: I.ARROW, snowball: I.SNOWBALL, egg: I.EGG, ender_pearl: I.ENDER_PEARL }[e.type];
+        const itemId = { arrow: I.ARROW, snowball: I.SNOWBALL, egg: I.EGG, ender_pearl: I.ENDER_PEARL, fireball: B.MAGMA_BLOCK }[e.type];
         const m = this.itemMesh(itemId);
         let matrix;
         if (e.type === 'arrow') {
@@ -1676,7 +1750,8 @@ export class EntityManager {
         continue;
       }
       const def = e.def;
-      const parts = this.meshesFor(e.type, e.tamed && def.tameSkin ? def.tameSkin : def.skin);
+      const skin = e.tamed && def.tameSkin ? def.tameSkin : e.charge > 0.4 && def.altSkin ? def.altSkin : def.skin;
+      const parts = this.meshesFor(e.type, skin);
       const base = [];
       if (e.roost) base.push(translation(0, e.h, 0), rotationZ(Math.PI));
       base.push(rotationY(e.yaw + Math.PI));
@@ -1740,6 +1815,12 @@ export class EntityManager {
             rot = compose(rotationY(wag), rotationX(sit ? 1.5 : e.tamed ? 1.1 : 0.6));
             break;
           }
+          case 'magmaTop':
+            off = [0, e.onGround ? 0 : Math.min(0.2, Math.abs(e.vel[1]) * 0.03), 0];
+            break;
+          case 'ghastLeg':
+            rot = compose(rotationX(Math.sin(time * 1.3 + p.angle) * 0.25), rotationZ(Math.cos(time * 1.1 + p.angle * 2) * 0.2));
+            break;
           case 'gtail':
             rot = rotationY(Math.sin(e.swimPhase * 2 + time * (def.fish ? 8 : 2)) * (def.fish ? 0.5 : 0.35));
             break;

@@ -12,6 +12,20 @@ const gray = (c, k) => {
   return [l, l, l];
 };
 
+// The Nether has no sun, sky or weather: a dim warm light everywhere (its
+// bedrock roof blocks all sky light, so this colour acts as the ambient)
+// and a thick red haze.
+export function netherSky() {
+  const haze = [0.03, 0.0045, 0.004];
+  const vHaze = [0.2, 0.035, 0.025];
+  return {
+    angle: 0, sunDir: [0, 1, 0], moonDir: [0, -1, 0], lightDir: [0, 1, 0], lightColor: [0, 0, 0], day: 0, sunset: 0, night: 0,
+    zenith: haze, horizon: haze, sunGlow: [0, 0, 0], ambientSky: [1.5, 0.95, 0.75], ambientGround: [1.25, 0.8, 0.62],
+    sunVisible: 0, rain: 0, nether: true,
+    vanilla: { zenith: vHaze, horizon: vHaze, sunset: 0, skyLight: [2.6, 1.9, 1.65], day: 0, night: 0 },
+  };
+}
+
 // `rain` (0..1) darkens and greys the sky; `flash` (0..1) is lightning.
 export function skyState(ticks, rain = 0, flash = 0) {
   const angle = (ticks / DAY_LENGTH_TICKS) * Math.PI * 2;

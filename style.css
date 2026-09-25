@@ -489,3 +489,7 @@ input:not([type]):focus { border-color: #fff; }
 .hint.error { color: #ff5555; }
 .hint.small { font-size: 13px; max-width: 520px; margin-top: 10px; }
 .hint code { color: #e0e0e0; }
+#portal-fx {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(150, 60, 230, 0.35), rgba(90, 10, 170, 0.9));
+}

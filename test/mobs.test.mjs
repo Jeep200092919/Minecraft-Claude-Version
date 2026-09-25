@@ -167,3 +167,23 @@ test('guardians charge a laser at players in the water', () => {
   for (let i = 0; i < 6 && g.player.health === 20; i++) run(g, 1);
   assert.ok(g.player.health < 20, `hit by the laser (health ${g.player.health})`);
 });
+
+test('ghasts shoot fireballs that explode, and punched fireballs fly back', () => {
+  const g = fakeGame();
+  const E = g.entities;
+  const blasts = [];
+  g.explode = (x, y, z, r) => blasts.push(r);
+  const ghast = E.spawn('ghast', 0.5, 70, -14.5);
+  ghast.target = { ref: 'player' };
+  ghast.seesTarget = true;
+  let fired = null;
+  const shoot = E.shoot.bind(E);
+  E.shoot = (type, ...rest) => { const p = shoot(type, ...rest); if (type === 'fireball') fired = p; return p; };
+  for (let i = 0; i < 60 && !fired; i++) E.flyGhast(ghast, 0.05);
+  assert.ok(fired, 'fireball fired');
+  assert.equal(fired.owner, ghast);
+  for (let i = 0; i < 100 && !fired.removed; i++) E.updateProjectile(fired, 0.05);
+  assert.ok(fired.removed && blasts.includes(1), 'it explodes on impact');
+  assert.equal(MOBS.ghast.fireImmune, true);
+  assert.equal(MOBS.magma_cube.sizes, true);
+});

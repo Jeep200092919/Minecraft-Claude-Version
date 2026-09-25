@@ -12,7 +12,7 @@ import {
   compose, translation, rotationX, rotationY, rotationZ, scaling, ortho, lookRotation, transformPoint,
 } from './math.js';
 import { SimplexNoise, mulberry32 } from './noise.js';
-import { skyState } from './sky.js';
+import { skyState, netherSky } from './sky.js';
 import * as S from './shaders.js';
 
 function compile(gl, type, src) {
@@ -443,7 +443,7 @@ export class Renderer {
     perspective(this.proj, fovY, aspect, this.near, this.far);
     viewRotation(this.view, camera.yaw, camera.pitch);
     multiply(this.viewProj, this.proj, this.view);
-    const sky = skyState(state.ticks, state.rain || 0, state.flash || 0);
+    const sky = state.dimension === 'nether' ? netherSky() : skyState(state.ticks, state.rain || 0, state.flash || 0);
     const visible = this.collectVisible(state);
     const frame = { state, sky, aspect, fovY, visible, cam: camera.pos, viewDist: state.renderDistance * CHUNK_SIZE };
     const dt = Math.min(0.2, Math.max(0, state.seconds - this.lastSeconds));
@@ -484,7 +484,8 @@ export class Renderer {
   updateExposure(state, sky, dt) {
     const [sl, bl] = state.light || [15, 0];
     const env = Math.max(lightCurve(sl / 15) * (0.05 + 0.95 * sky.day), lightCurve(bl / 15) * 0.5);
-    const target = Math.min(2.6, Math.max(0.95, 0.42 / (env + 0.06)));
+    // The Nether's light is the same everywhere: no adaptation there.
+    const target = sky.nether ? 1.1 : Math.min(2.6, Math.max(0.95, 0.42 / (env + 0.06)));
     this.exposure += (target - this.exposure) * Math.min(1, dt * 1.2);
   }
 
@@ -557,13 +558,14 @@ export class Renderer {
     let fogRange = [viewDist * 0.55 * rainFog, viewDist * 0.95 * rainFog];
     if (state.inLava) { fogColor = [0.75, 0.25, 0.04]; fogRange = [0, 2.5]; }
     else if (state.underwater) { fogColor = mix3([0.02, 0.04, 0.12], [0.1, 0.26, 0.55], v.day); fogRange = [1, 28]; }
+    else if (sky.nether) fogRange = [viewDist * 0.2, viewDist * 0.8];
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    if (!state.underwater && !state.inLava) this.drawSky(this.prog.sky, state, sky, aspect, fovY, false);
+    if (!state.underwater && !state.inLava && !sky.nether) this.drawSky(this.prog.sky, state, sky, aspect, fovY, false);
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -594,7 +596,7 @@ export class Renderer {
     this.drawEntities(p, state.entities, cam);
     this.drawCrack(p, state, cam);
 
-    if (!state.underwater && !state.inLava) this.drawClouds(this.prog.cloud, state, sky, cam, viewDist, false);
+    if (!state.underwater && !state.inLava && !sky.nether) this.drawClouds(this.prog.cloud, state, sky, cam, viewDist, false);
 
     setup();
     gl.uniform1f(p.u.uAlphaTest, 0);
@@ -810,13 +812,16 @@ export class Renderer {
     if (state.inLava) {
       fog.underwater = true;
       fog.waterColor = [1.2, 0.35, 0.05];
+    } else if (sky.nether) {
+      fog.range = [viewDist * 0.2, viewDist * 0.85];
+      fog.haze = 0.006;
     }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.scene.fbo);
     gl.viewport(0, 0, w, h);
     gl.clearColor(...(fog.underwater ? fog.waterColor : sky.horizon), 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    if (!fog.underwater) this.drawSky(this.prog.skyFancy, state, sky, aspect, fovY, true);
+    if (!fog.underwater && !sky.nether) this.drawSky(this.prog.skyFancy, state, sky, aspect, fovY, true);
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -828,7 +833,7 @@ export class Renderer {
     this.drawChunkList(p, visible, cam, 'solid');
     this.drawEntities(p, state.entities, cam);
     this.drawCrack(p, state, cam);
-    if (!fog.underwater) this.drawClouds(this.prog.cloudFancy, state, sky, cam, viewDist, true);
+    if (!fog.underwater && !sky.nether) this.drawClouds(this.prog.cloudFancy, state, sky, cam, viewDist, true);
 
     // Snapshot color + depth so water can refract and reflect the scene.
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.scene.fbo);

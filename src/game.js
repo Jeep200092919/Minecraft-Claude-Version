@@ -25,6 +25,7 @@ import { Chat } from './chat.js';
 import { skyState } from './sky.js';
 import { rollLoot } from './structures.js';
 import { Net, serverUrl, DEFAULT_PORT } from './net.js';
+import { LAVA_SEA } from './nether.js';
 
 export const DEFAULT_SETTINGS = {
   renderDistance: 8,
@@ -67,6 +68,10 @@ export class Game {
     this.thirdPerson = 0;
     this.skinIndex = 0;
     this.weather = new Weather();
+    this.dimension = 'overworld';
+    this.dims = {}; // dimension name -> World (kept while you visit the other one)
+    this.portalTime = 0;
+    this.portalCooldown = 0;
     this.chat = new Chat(this);
     this.playerName = this.settings.playerName || 'Player';
     this.pendingEvents = [];
@@ -164,6 +169,8 @@ export class Game {
     this.panorama = { pos: [spawn.x, spawn.y + 16, spawn.z], yaw: Math.random() * Math.PI * 2 };
     this.meta = null;
     this.player = null;
+    this.dims = {};
+    this.dimension = 'overworld';
     this.state = 'title';
     this.ticks = 2500;
   }
@@ -183,7 +190,14 @@ export class Game {
     this.leaveServer();
     this.meta = meta;
     this.creative = meta.mode === 'creative';
-    this.setWorld(new World({ seed: meta.seed, edits: saved?.edits, blockEntities: saved?.blockEntities }));
+    this.dimension = saved?.dimension === 'nether' ? 'nether' : 'overworld';
+    this.dims = {
+      overworld: new World({ seed: meta.seed, edits: saved?.edits, blockEntities: saved?.blockEntities }),
+      nether: new World({ seed: meta.seed, edits: saved?.netherEdits, blockEntities: saved?.netherBlockEntities, dimension: 'nether' }),
+    };
+    this.setWorld(this.dims[this.dimension]);
+    this.portalTime = 0;
+    this.portalCooldown = saved ? 1 : 0;
     this.player = new Player();
     if (saved?.player) {
       this.player.load(saved.player);
@@ -214,7 +228,10 @@ export class Game {
 
   finishLoading() {
     const p = this.player;
-    if (this.needsSpawnFix) {
+    if (this.portalDest) {
+      this.arriveThroughPortal();
+      this.portalDest = null;
+    } else if (this.needsSpawnFix) {
       const x = Math.floor(p.pos[0]), z = Math.floor(p.pos[2]);
       const y = this.world.surfaceY(x, z, (id) => IS_SOLID[id] === 1);
       p.pos[1] = y + 1;
@@ -241,8 +258,11 @@ export class Game {
       player: this.player.toJSON(),
       inventory: this.inventory.toJSON(),
       ticks: this.ticks,
-      edits: this.world.edits,
-      blockEntities: this.world.blockEntities,
+      edits: (this.dims.overworld || this.world).edits,
+      blockEntities: (this.dims.overworld || this.world).blockEntities,
+      netherEdits: this.dims.nether?.edits,
+      netherBlockEntities: this.dims.nether?.blockEntities,
+      dimension: this.dimension,
     });
   }
 
@@ -275,7 +295,9 @@ export class Game {
     const wm = welcome.world;
     this.meta = null;
     this.creative = welcome.you?.creative ?? wm.mode === 'creative';
+    this.dimension = 'overworld';
     this.setWorld(new World({ seed: wm.seed, edits: decodeEdits(welcome.edits), blockEntities: decodeBlockEntities(welcome.blockEntities) }));
+    this.dims = { overworld: this.world };
     this.player = new Player();
     // Everybody starts at the same world spawn; returning players continue
     // where they left off.
@@ -438,6 +460,11 @@ export class Game {
 
   respawn() {
     this.player.respawn();
+    if (this.dimension === 'nether') {
+      // Your spawn point is in the Overworld.
+      this.dimension = 'overworld';
+      this.setWorld(this.dims.overworld);
+    }
     this.beginLoading('Respawning');
   }
 
@@ -562,6 +589,7 @@ export class Game {
         const input = this.movementInput();
         player.update(dt, input, this.world, this.creative, events);
         this.checkPressurePlate();
+        this.updatePortal(dt);
       }
       this.handleEvents(events);
       if (this.sleeping) this.updateSleep(dt);
@@ -579,7 +607,10 @@ export class Game {
 
     this.world.update(pcx, pcz, rd, playing ? 6 : 12, this.buildMesh);
     this.net?.update(dt);
-    if (this.state !== 'paused' && this.state !== 'inventory') this.particles.update(dt, this.world);
+    if (this.state !== 'paused' && this.state !== 'inventory') {
+      this.portalParticles(dt);
+      this.particles.update(dt, this.world);
+    }
     // Online the world keeps going while you are in a menu or dead.
     const simulate = this.state === 'playing' || this.state === 'inventory' || this.state === 'chat' || (!!this.net && (this.state === 'paused' || this.state === 'dead'));
     if (simulate) this.weather.update(dt, this, !this.net || this.net.isAuthority);
@@ -649,10 +680,11 @@ export class Game {
       light: [this.world.getSkyLight(ex, ey, ez), this.world.getBlockLight(ex, ey, ez)],
       particles: this.particles.list,
       entities: this.renderEntities(),
-      rain: this.weather.rain,
-      flash: this.weather.flash,
-      weatherMesh: this.weather.buildMesh(this.world, camPos, this.seconds, this.world.generator),
-      boltMesh: this.weather.buildBoltMesh(camPos),
+      dimension: this.dimension,
+      rain: this.dimension === 'nether' ? 0 : this.weather.rain,
+      flash: this.dimension === 'nether' ? 0 : this.weather.flash,
+      weatherMesh: this.dimension === 'nether' ? null : this.weather.buildMesh(this.world, camPos, this.seconds, this.world.generator),
+      boltMesh: this.dimension === 'nether' ? null : this.weather.buildBoltMesh(camPos),
       eating: this.eating ? 1 : 0,
     });
     if (this.net) this.net.updateNameTags(this.renderer.viewProj, camPos, this.canvas.clientWidth, this.canvas.clientHeight);
@@ -746,7 +778,7 @@ export class Game {
     const eye = p.eye(), dir = p.lookDir();
     this.target = raycast((x, y, z) => this.world.getBlock(x, y, z), eye, dir, reach);
     const t = this.target;
-    const mobHit = this.entities.raycast(eye, dir, this.creative ? 5 : 3.5);
+    const mobHit = this.entities.raycast(eye, dir, this.creative ? 5 : 3.5, true);
     this.targetMob = mobHit && (!t || mobHit.t < t.distance) ? mobHit.entity : null;
     // Other players can be hit too.
     const pvp = this.net?.raycastPlayers(eye, dir, this.creative ? 5 : 3.5);
@@ -858,6 +890,17 @@ export class Game {
 
   attack(mob) {
     const p = this.player;
+    if (mob.kind === 'projectile') {
+      // Punching a ghast's fireball sends it back where you look.
+      const d = p.lookDir();
+      const speed = Math.hypot(...mob.vel) * 1.2;
+      mob.vel = d.map((v) => v * speed);
+      mob.owner = this.entities.localRef;
+      this.swing = 1;
+      this.attackCooldown = 0.25;
+      this.sound.hit?.();
+      return;
+    }
     const item = ITEMS.get(this.inventory.selectedId);
     let dmg = item ? item.damage : 1;
     if (!p.onGround && p.vel[1] < -1 && !p.flying) {
@@ -916,6 +959,7 @@ export class Game {
   }
 
   useOnMob(mob) {
+    if (mob.kind !== 'mob') return false;
     const inv = this.inventory;
     const id = inv.selectedStack?.id ?? null;
     // Shearing, milking, taming, feeding and telling a tamed wolf to sit. In
@@ -1080,6 +1124,12 @@ export class Game {
   // Beds: sleep through the night (and set the spawn point).
   trySleep(x, y, z) {
     const p = this.player;
+    if (this.dimension === 'nether') {
+      // Beds explode in the Nether.
+      this.setBlockSynced(x, y, z, B.AIR);
+      explode(this, x + 0.5, y + 0.5, z + 0.5, 5);
+      return;
+    }
     const day = this.ticks > 12500 && this.ticks < 23500 ? false : true;
     p.spawn = [x + 0.5, y + 1, z + 0.5];
     if (day) {
@@ -1164,9 +1214,203 @@ export class Game {
   // Every block change made by the player or game rules goes through here so
   // it can be shared with other players.
   setBlockSynced(x, y, z, id) {
+    const before = this.world.getBlock(x, y, z);
     const ok = this.world.setBlock(x, y, z, id);
     if (ok) this.net?.sendBlock(x, y, z, id);
+    if (ok && before === B.OBSIDIAN) this.breakPortalsNear(x, y, z);
     return ok;
+  }
+
+  // --- Nether portals ---------------------------------------------------------------
+
+  // Flint and steel on an obsidian frame: `x, y, z` is the air block next to
+  // the clicked face. Frames can be 2x3 to 21x21 inside, corners optional.
+  lightPortal(x, y, z) {
+    if (this.world.getBlock(x, y, z) !== B.AIR) return false;
+    for (const axis of [0, 2]) {
+      const cells = this.portalInterior(x, y, z, axis);
+      if (!cells) continue;
+      const id = axis === 0 ? B.NETHER_PORTAL_X : B.NETHER_PORTAL_Z;
+      for (const [cx, cy, cz] of cells) this.setBlockSynced(cx, cy, cz, id);
+      this.sound.portal?.();
+      return true;
+    }
+    return false;
+  }
+
+  portalInterior(x, y, z, axis) {
+    const w = this.world;
+    const [ux, uz] = axis === 0 ? [1, 0] : [0, 1];
+    const get = (i, k) => w.getBlock(x + ux * i, y + k, z + uz * i);
+    let bottom = 0;
+    while (bottom > -21 && get(0, bottom - 1) === B.AIR) bottom--;
+    if (get(0, bottom - 1) !== B.OBSIDIAN) return null;
+    let left = 0;
+    while (left > -21 && get(left - 1, bottom) === B.AIR) left--;
+    if (get(left - 1, bottom) !== B.OBSIDIAN) return null;
+    let width = 0;
+    while (width < 22 && get(left + width, bottom) === B.AIR) width++;
+    let height = 0;
+    while (height < 22 && get(left, bottom + height) === B.AIR) height++;
+    if (width < 2 || width > 21 || height < 3 || height > 21) return null;
+    const cells = [];
+    for (let i = 0; i < width; i++) {
+      if (get(left + i, bottom - 1) !== B.OBSIDIAN || get(left + i, bottom + height) !== B.OBSIDIAN) return null;
+      for (let k = 0; k < height; k++) {
+        if (get(left + i, bottom + k) !== B.AIR) return null;
+        cells.push([x + ux * (left + i), y + bottom + k, z + uz * (left + i)]);
+      }
+    }
+    for (let k = 0; k < height; k++) {
+      if (get(left - 1, bottom + k) !== B.OBSIDIAN || get(left + width, bottom + k) !== B.OBSIDIAN) return null;
+    }
+    return cells;
+  }
+
+  // A portal whose frame loses a block goes out.
+  breakPortalsNear(x, y, z) {
+    const w = this.world;
+    const queue = [];
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      if (BLOCKS[w.getBlock(x + dx, y + dy, z + dz)].portal) queue.push([x + dx, y + dy, z + dz]);
+    }
+    for (let n = 0; queue.length && n < 600; n++) {
+      const [px, py, pz] = queue.pop();
+      if (!BLOCKS[w.getBlock(px, py, pz)].portal) continue;
+      this.setBlockSynced(px, py, pz, B.AIR);
+      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+        if (BLOCKS[w.getBlock(px + dx, py + dy, pz + dz)].portal) queue.push([px + dx, py + dy, pz + dz]);
+      }
+    }
+  }
+
+  // Purple sparks drifting around portals near the player.
+  portalParticles(dt) {
+    const p = this.player;
+    if (!p || !this.world.portals.size || Math.random() > dt * 30) return;
+    const near = [];
+    for (const pos of this.world.portals.values()) {
+      if (Math.abs(pos[0] - p.pos[0]) < 16 && Math.abs(pos[1] - p.pos[1]) < 16 && Math.abs(pos[2] - p.pos[2]) < 16) near.push(pos);
+      if (near.length > 64) break;
+    }
+    if (!near.length) return;
+    const [x, y, z] = near[Math.floor(Math.random() * near.length)];
+    this.particles.fx('portal', x + Math.random(), y + Math.random(), z + Math.random(), 1, 0.2, { up: 0.3, grav: -0.3, vel: 0.8, life: 1.2 });
+  }
+
+  // Standing in a portal for four seconds (one in Creative) takes you to
+  // the other dimension.
+  updatePortal(dt) {
+    const p = this.player;
+    const w = this.world;
+    const at = (dy) => BLOCKS[w.getBlock(Math.floor(p.pos[0]), Math.floor(p.pos[1] + dy), Math.floor(p.pos[2]))].portal;
+    const inside = at(0.1) || at(1.2);
+    if (!inside) {
+      this.portalTime = 0;
+      this.portalCooldown = 0;
+      this.ui.setPortalOverlay(0);
+      return;
+    }
+    if (this.portalCooldown > 0) return; // just arrived: step out first
+    if (this.portalTime === 0) this.sound.portal?.();
+    this.portalTime += dt;
+    const need = this.creative ? 1 : 4;
+    this.ui.setPortalOverlay(Math.min(1, this.portalTime / need));
+    if (this.portalTime < need) return;
+    this.portalTime = 0;
+    this.portalCooldown = 1;
+    this.ui.setPortalOverlay(0);
+    if (this.net) {
+      this.ui.toast('The Nether is not available in multiplayer yet');
+      return;
+    }
+    this.travelDimension();
+  }
+
+  travelDimension() {
+    const to = this.dimension === 'nether' ? 'overworld' : 'nether';
+    const k = to === 'nether' ? 1 / 8 : 8;
+    const p = this.player;
+    this.portalDest = { x: Math.floor(p.pos[0] * k), z: Math.floor(p.pos[2] * k), y: p.pos[1] };
+    if (!this.dims[to]) this.dims[to] = new World({ seed: this.world.seed, dimension: to });
+    this.dimension = to;
+    this.setWorld(this.dims[to]);
+    p.pos = [this.portalDest.x + 0.5, to === 'nether' ? 64 : 80, this.portalDest.z + 0.5];
+    p.vel = [0, 0, 0];
+    this.sound.teleport?.();
+    this.beginLoading(to === 'nether' ? 'Entering the Nether' : 'Leaving the Nether');
+  }
+
+  // Puts the player in the nearest portal around the destination, building
+  // one (with a small obsidian platform if needed) when there is none.
+  arriveThroughPortal() {
+    const w = this.world, p = this.player;
+    const { x: cx, z: cz } = this.portalDest;
+    let best = null, bd = Infinity;
+    for (let dz = -20; dz <= 20; dz++) {
+      for (let dx = -20; dx <= 20; dx++) {
+        const x = cx + dx, z = cz + dz;
+        if (!w.isReady(x, z)) continue;
+        for (let y = 2; y < CHUNK_HEIGHT - 2; y++) {
+          if (!BLOCKS[w.getBlock(x, y, z)].portal || BLOCKS[w.getBlock(x, y - 1, z)].portal) continue;
+          const d = dx * dx + dz * dz;
+          if (d < bd) { bd = d; best = [x, y, z]; }
+        }
+      }
+    }
+    if (!best) best = this.buildPortal(cx, cz);
+    p.pos = [best[0] + 0.5, best[1], best[2] + 0.5];
+    p.vel = [0, 0, 0];
+    p.fallDistance = 0;
+    p.flying = p.flying && this.creative;
+    this.portalCooldown = 1;
+  }
+
+  buildPortal(cx, cz) {
+    const w = this.world;
+    const nether = this.dimension === 'nether';
+    const free = (id) => id === B.AIR || (BLOCKS[id].replaceable && !BLOCKS[id].liquid);
+    // Room for the frame (4 wide along X, 5 tall) with a block of space on
+    // either side, standing on solid ground.
+    const fits = (x, y, z) => {
+      for (let i = -1; i <= 4; i++) {
+        if (!IS_SOLID[w.getBlock(x + i, y - 1, z)]) return false;
+        for (let j = -1; j <= 1; j++) for (let k = 0; k <= 4; k++) if (!free(w.getBlock(x + i, y + k, z + j))) return false;
+      }
+      return true;
+    };
+    let spot = null;
+    for (let r = 0; r <= 14 && !spot; r++) {
+      for (let dz = -r; dz <= r && !spot; dz++) {
+        for (let dx = -r; dx <= r && !spot; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const x = cx + dx, z = cz + dz;
+          if (!w.isReady(x - 2, z - 2) || !w.isReady(x + 6, z + 2)) continue;
+          if (nether) {
+            for (let y = 100; y > LAVA_SEA + 1 && !spot; y--) if (fits(x, y, z)) spot = [x, y, z];
+          } else {
+            const y = w.heightAt(x, z) + 1;
+            if (y > 2 && fits(x, y, z)) spot = [x, y, z];
+          }
+        }
+      }
+    }
+    if (!spot) spot = [cx, nether ? 70 : Math.max(w.heightAt(cx, cz) + 1, 64), cz];
+    const [x, y, z] = spot;
+    // Clear the space and lay an obsidian platform under it.
+    for (let i = -1; i <= 4; i++) {
+      for (let j = -1; j <= 1; j++) {
+        if (!IS_SOLID[w.getBlock(x + i, y - 1, z + j)]) w.setBlock(x + i, y - 1, z + j, B.OBSIDIAN);
+        for (let k = 0; k <= 4; k++) w.setBlock(x + i, y + k, z + j, B.AIR);
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      for (let k = -1; k <= 3; k++) {
+        const edge = i === 0 || i === 3 || k === -1 || k === 3;
+        w.setBlock(x + i, y + k, z, edge ? B.OBSIDIAN : B.NETHER_PORTAL_X);
+      }
+    }
+    return [x + 1, y, z];
   }
 
   // Chest and furnace contents, shared the same way.

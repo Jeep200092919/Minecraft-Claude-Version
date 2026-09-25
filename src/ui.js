@@ -392,6 +392,14 @@ export class UI {
     $('hurt').classList.toggle('on', player.hurtTime > 0.25);
   }
 
+  // Purple swirl while standing in a nether portal (0..1).
+  setPortalOverlay(v) {
+    const q = Math.round(v * 20) / 20;
+    if (q === this.portalFx) return;
+    this.portalFx = q;
+    $('portal-fx').style.opacity = String(q * 0.85);
+  }
+
   setTint(kind) {
     const t = $('tint');
     t.className = kind || '';

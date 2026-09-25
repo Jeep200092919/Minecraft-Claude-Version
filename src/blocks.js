@@ -326,6 +326,11 @@ export const I = {
   RAW_COD: 386,
   COOKED_COD: 387,
   COD_SPAWN_EGG: 388,
+  GHAST_TEAR: 389,
+  MAGMA_CREAM: 390,
+  ZOMBIFIED_PIGLIN_SPAWN_EGG: 391,
+  GHAST_SPAWN_EGG: 392,
+  MAGMA_CUBE_SPAWN_EGG: 393,
 };
 export const ARMOR_MATERIALS = ['leather', 'iron', 'golden', 'diamond'];
 export const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
@@ -774,7 +779,7 @@ for (const mob of ['pig', 'cow', 'sheep', 'chicken', 'zombie', 'creeper', 'villa
   const label = mob[0].toUpperCase() + mob.slice(1);
   item(I[`${mob.toUpperCase()}_SPAWN_EGG`], `${mob}_spawn_egg`, `${label} Spawn Egg`, { spawns: mob });
 }
-for (const mob of ['skeleton', 'spider', 'enderman', 'slime', 'wolf', 'iron_golem', 'squid', 'bat', 'rabbit', 'guardian', 'cod']) {
+for (const mob of ['skeleton', 'spider', 'enderman', 'slime', 'wolf', 'iron_golem', 'squid', 'bat', 'rabbit', 'guardian', 'cod', 'zombified_piglin', 'ghast', 'magma_cube']) {
   const label = mob.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
   item(I[`${mob.toUpperCase()}_SPAWN_EGG`], `${mob}_spawn_egg`, `${label} Spawn Egg`, { spawns: mob });
 }
@@ -784,6 +789,8 @@ item(I.INK_SAC, 'ink_sac', 'Ink Sac');
 item(I.PRISMARINE_SHARD, 'prismarine_shard', 'Prismarine Shard');
 item(I.PRISMARINE_CRYSTALS, 'prismarine_crystals', 'Prismarine Crystals');
 item(I.RAW_COD, 'raw_cod', 'Raw Cod', food(2, 0.4));
+item(I.GHAST_TEAR, 'ghast_tear', 'Ghast Tear');
+item(I.MAGMA_CREAM, 'magma_cream', 'Magma Cream');
 item(I.COOKED_COD, 'cooked_cod', 'Cooked Cod', food(5, 6));
 item(I.BOW, 'bow', 'Bow', { maxStack: 1, durability: 384, bow: true });
 item(I.ARROW, 'arrow', 'Arrow');

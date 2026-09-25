@@ -203,6 +203,13 @@ export class Sound {
     if (this._ready()) this._tone(300, 0.4, 0.3, 0, 1400, 'sawtooth');
   }
 
+  // Standing in a nether portal.
+  portal() {
+    if (!this._ready()) return;
+    this._voice('sawtooth', 70, 140, 3.5, 0.18, { filter: 500, trem: 3 });
+    this._tone(400, 3, 0.05, 0, 900, 'sine');
+  }
+
   // The eerie scream of an enderman that has been looked at.
   stare() {
     if (!this._ready()) return;
@@ -314,6 +321,19 @@ export class Sound {
       case 'guardian':
         this._voice('sine', 320 * p, hurt ? 180 : 240 * p, hurt ? 0.3 : 0.6, g * 0.7, { filter: 900, trem: 7 });
         this._burst('wool', 0.2, 0.2, 0.7);
+        break;
+      case 'piglin':
+        this._voice('square', 150 * p, 110 * p, hurt ? 0.25 : 0.4, g * 0.9, { filter: 600, trem: 14 });
+        this._voice('sawtooth', 90 * p, 70 * p, 0.3, g * 0.5, { filter: 380, delay: 0.08 });
+        break;
+      case 'ghast':
+        // A high, wailing cry (a shriek when it fires or is hurt).
+        this._voice('sine', (hurt ? 900 : 620) * p, (hurt ? 420 : 520) * p, hurt ? 0.5 : 1.2, g * 0.7, { filter: 2400, trem: 6 });
+        this._voice('triangle', (hurt ? 1300 : 900) * p, 700 * p, 0.8, g * 0.25, { filter: 3000, delay: 0.05 });
+        break;
+      case 'magma':
+        this._voice('sine', 110 * p, 70 * p, 0.2, g, { filter: 400 });
+        this._burst('sand', 0.15, 0.25, 0.5);
         break;
       case 'rabbit':
         if (hurt) this._tone(1300 * p, 0.12, g * 0.5, 0, 900 * p, 'triangle');

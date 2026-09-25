@@ -168,6 +168,13 @@ function useBucket(game, it) {
   if (y < 1 || y >= CHUNK_HEIGHT) return false;
   const cur = w.getBlock(x, y, z);
   if (!BLOCKS[cur].replaceable) return false;
+  if (it.bucket === B.WATER && w.dimension === 'nether') {
+    // Water boils away in the Nether.
+    game.particles.smoke(x + 0.5, y + 0.5, z + 0.5, 10, 0.5, 0.2, 0.2);
+    game.sound.hiss();
+    if (!game.creative) inv.slots[inv.selected] = { id: I.BUCKET, count: 1 };
+    return true;
+  }
   game.setBlockSynced(x, y, z, it.bucket);
   if (it.bucket === B.WATER) game.flowWater(x, y - 1, z);
   if (!game.creative) inv.slots[inv.selected] = { id: I.BUCKET, count: 1 };

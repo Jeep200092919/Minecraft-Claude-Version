@@ -4,6 +4,7 @@ import { CHUNK_SIZE, CHUNK_HEIGHT, MAX_LIGHT } from './constants.js';
 import { B, BLOCKS, LIGHT_ATTEN, LIGHT_EMIT } from './blocks.js';
 import { Chunk, CHUNK_STATE, chunkKey } from './chunk.js';
 import { WorldGenerator } from './worldgen.js';
+import { NetherGenerator } from './nether.js';
 
 export const SKY = 0;
 export const BLOCKLIGHT = 1;
@@ -17,9 +18,10 @@ const DIRS = [
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 export class World {
-  constructor({ seed, edits, blockEntities } = {}) {
+  constructor({ seed, edits, blockEntities, dimension = 'overworld' } = {}) {
     this.seed = seed >>> 0;
-    this.generator = new WorldGenerator(this.seed);
+    this.dimension = dimension;
+    this.generator = dimension === 'nether' ? new NetherGenerator(this.seed) : new WorldGenerator(this.seed);
     this.chunks = new Map();
     // Player modifications: chunkKey -> Map(blockIndex -> blockId).
     this.edits = edits || new Map();
@@ -27,8 +29,9 @@ export class World {
     this.blockEntities = blockEntities || new Map();
     // Growing crops: "x,y,z" -> [x, y, z].
     this.crops = new Map();
-    // Monster spawners: "x,y,z" -> [x, y, z].
+    // Monster spawners and nether portal blocks: "x,y,z" -> [x, y, z].
     this.spawners = new Map();
+    this.portals = new Map();
     this.onChunkUnload = null;
     this._lastKey = -1;
     this._lastChunk = null;
@@ -129,6 +132,8 @@ export class World {
     else this.crops.delete(key);
     if (id === B.SPAWNER) this.spawners.set(key, [x, y, z]);
     else this.spawners.delete(key);
+    if (BLOCKS[id].portal) this.portals.set(key, [x, y, z]);
+    else this.portals.delete(key);
 
     this.relight(x, y, z);
     this.markDirty(x, z);
@@ -373,9 +378,9 @@ export class World {
     this.generator.generate(c, this.edits.get(c.key));
     for (let i = 0; i < c.blocks.length; i++) {
       const id = c.blocks[i];
-      if (id && (BLOCKS[id].crop !== undefined || BLOCKS[id].sapling || id === B.SPAWNER)) {
+      if (id && (BLOCKS[id].crop !== undefined || BLOCKS[id].sapling || id === B.SPAWNER || BLOCKS[id].portal)) {
         const x = cx * CHUNK_SIZE + (i & 15), y = i >> 8, z = cz * CHUNK_SIZE + ((i >> 4) & 15);
-        (id === B.SPAWNER ? this.spawners : this.crops).set(`${x},${y},${z}`, [x, y, z]);
+        (id === B.SPAWNER ? this.spawners : BLOCKS[id].portal ? this.portals : this.crops).set(`${x},${y},${z}`, [x, y, z]);
       }
     }
     this.initChunkLight(c);

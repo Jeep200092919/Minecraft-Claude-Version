@@ -134,7 +134,7 @@ export const MOBS = {
     ],
   },
   slime: {
-    health: 16, width: 0.52, height: 0.52, speed: 2.2, hostile: true, skin: 10, hops: true, attack: 4, sizes: true,
+    health: 16, width: 0.52, height: 0.52, speed: 2.2, hostile: true, skin: 10, hops: true, attack: 4, sizes: true, smallDrop: [I.SLIMEBALL, 0, 2],
     drops: [], sound: 'slime',
     parts: [
       { kind: 'body', box: [-3, 1, -3, 3, 7, 3], uv: [0, 16] },
@@ -227,6 +227,36 @@ export const MOBS = {
       { kind: 'gtail', box: [-1, 6, -18, 1, 8, -12], uv: [24, 34], pivot: [0, 7, -6] },
     ],
   },
+  zombified_piglin: {
+    health: 20, width: 0.6, height: 1.95, speed: 2.3, neutral: true, skin: 19, attack: 5, fireImmune: true, packAnger: true, xp: 5,
+    holds: I.GOLDEN_SWORD, drops: [[I.ROTTEN_FLESH, 0, 1], [I.GOLD_NUGGET, 0, 1]], sound: 'piglin',
+    parts: [
+      ...humanoid(),
+      { kind: 'head', box: [-2, 25, 4, 2, 28, 5], uv: [32, 0], pivot: [0, 24, 0] },
+      { kind: 'head', box: [-5, 27, -1, -4, 31, 2], uv: [48, 0], pivot: [0, 24, 0] },
+      { kind: 'head', box: [4, 27, -1, 5, 31, 2], uv: [48, 0], pivot: [0, 24, 0] },
+    ],
+  },
+  ghast: {
+    health: 10, width: 4, height: 4, speed: 1.4, hostile: true, skin: 20, altSkin: 21, flies: true, ghast: true, fireImmune: true,
+    scale: 4, xp: 5, drops: [[I.GHAST_TEAR, 0, 1], [I.GUNPOWDER, 0, 2]], sound: 'ghast',
+    parts: [
+      { kind: 'body', box: [-8, 0, -8, 8, 16, 8], uv: [0, 0] },
+      ...[[-5, -5, 9], [0, -5, 12], [5, -5, 8], [-5, 0, 11], [0, 0, 13], [5, 0, 10], [-5, 5, 8], [0, 5, 11], [5, 5, 9]].map(([x, z, len], i) => ({
+        kind: 'ghastLeg', box: [x - 1, -len, z - 1, x + 1, 0, z + 1], uv: [0, 32], uvBox: [2, 13, 2], pivot: [x, 0, z], angle: i,
+      })),
+    ],
+  },
+  magma_cube: {
+    health: 16, width: 0.52, height: 0.52, speed: 2.4, hostile: true, skin: 22, hops: true, sizes: true, fireImmune: true, magma: true,
+    attack: 4, drops: [], splitDrop: [I.MAGMA_CREAM, 0, 1], sound: 'magma',
+    // Two halves around a glowing core that pull apart while it jumps.
+    parts: [
+      { kind: 'body', box: [-2, 2, -2, 2, 6, 2], uv: [0, 24] },
+      { kind: 'body', box: [-4, 0, -4, 4, 4, 4], uv: [0, 12] },
+      { kind: 'magmaTop', box: [-4, 4, -4, 4, 8, 4], uv: [0, 0] },
+    ],
+  },
   cod: {
     health: 3, width: 0.5, height: 0.3, speed: 2, passive: true, skin: 18, swims: true, fish: true, xp: 1,
     drops: [[I.RAW_COD, 1, 1]], sound: 'squid',
@@ -269,6 +299,9 @@ export const SPAWN_EGGS = {
   [I.RABBIT_SPAWN_EGG]: 'rabbit',
   [I.GUARDIAN_SPAWN_EGG]: 'guardian',
   [I.COD_SPAWN_EGG]: 'cod',
+  [I.ZOMBIFIED_PIGLIN_SPAWN_EGG]: 'zombified_piglin',
+  [I.GHAST_SPAWN_EGG]: 'ghast',
+  [I.MAGMA_CUBE_SPAWN_EGG]: 'magma_cube',
 };
 
 // Texture rectangles of a box laid out Minecraft-style: [u, v, w, h] per face,
@@ -735,6 +768,75 @@ function paintCod() {
   return s;
 }
 
+function paintZombifiedPiglin() {
+  const flesh = mottle(250, 2.5, [230, 150, 150], [206, 120, 124], 0.9);
+  const rot = valueNoise(251, 3);
+  const skin = (sx, sy) => (rot(sx, sy) > 0.7 ? [110, 150, 80] : rot(sx, sy) < 0.12 ? [226, 222, 204] : flesh(sx, sy));
+  const cloth = mottle(252, 3, [110, 76, 44], [84, 56, 32], 0.8);
+  const s = paintHumanoid('zombified_piglin', skin, (sx, sy) => skin(sx, sy), cloth, [70, 50, 30], (sk, f) => {
+    sk.rect([f[0] + 1, f[1] + 3, 2, 1], [250, 250, 240], 0);
+    sk.px(f, 2, 3, [30, 20, 20]);
+    sk.rect([f[0] + 5, f[1] + 3, 2, 1], [120, 150, 90], 0); // the empty eye socket
+    sk.rect([f[0] + 1, f[1] + 7, 6, 1], [150, 90, 90], 0);
+    sk.px(f, 1, 6, [250, 240, 200]); sk.px(f, 6, 6, [250, 240, 200]); // tusks
+  });
+  // Snout and floppy ears.
+  s.box(32, 0, 4, 3, 1, (fc, x, y) => (fc === FRONT && y === 1 && (x === 1 || x === 2) ? [120, 60, 60] : [240, 170, 170]), 4);
+  s.box(48, 0, 1, 4, 3, (fc, x, y, w, h, sx, sy) => flesh(sx, sy), 4);
+  // A golden belt.
+  for (const fc of [0, 1, 4, 5]) {
+    const r = s.face(16, 16, 8, 12, 4, fc);
+    s.rect([r[0], r[1] + 10, r[2], 1], [236, 196, 60], 0);
+  }
+  return s;
+}
+
+function paintGhast(shooting) {
+  const s = new Skin(shooting ? 'ghast_shooting' : 'ghast');
+  const hide = mottle(260, 3, [242, 242, 242], [220, 220, 222], 0.8);
+  s.box(0, 0, 16, 16, 16, (fc, x, y, w, h, sx, sy) => ((x + 2 * y) % 11 === 0 ? [206, 206, 210] : hide(sx, sy)), 4);
+  const f = s.face(0, 0, 16, 16, 16, FRONT);
+  const dark = [40, 40, 44];
+  if (shooting) {
+    // Eyes open, red tears, mouth wide.
+    for (const ex of [3, 10]) {
+      s.rect([f[0] + ex, f[1] + 4, 3, 3], dark, 0);
+      s.rect([f[0] + ex, f[1] + 7, 1, 2], [200, 30, 30], 0);
+    }
+    s.rect([f[0] + 5, f[1] + 10, 6, 4], dark, 0);
+    s.rect([f[0] + 6, f[1] + 11, 4, 2], [120, 20, 20], 0);
+  } else {
+    for (const ex of [3, 10]) {
+      s.rect([f[0] + ex, f[1] + 6, 3, 1], dark, 0);
+      s.rect([f[0] + ex, f[1] + 7, 1, 2], [150, 150, 160], 0);
+    }
+    s.rect([f[0] + 6, f[1] + 11, 4, 1], dark, 0);
+  }
+  s.box(0, 32, 2, 13, 2, (fc, x, y) => (y > 10 ? [214, 214, 218] : hide(x * 3, y * 5)), 4);
+  return s;
+}
+
+function paintMagmaCube() {
+  const s = new Skin('magma_cube');
+  const crust = mottle(270, 2, [70, 24, 16], [40, 14, 10], 0.9);
+  const cracks = valueNoise(271, 2);
+  const lava = (fc, x, y, w, h, sx, sy) => {
+    const c = cracks(sx, sy);
+    if (c > 0.72) return [255, 200, 60];
+    if (c > 0.62) return [236, 110, 30];
+    return crust(sx, sy);
+  };
+  s.box(0, 0, 8, 4, 8, lava, 6);
+  s.box(0, 12, 8, 4, 8, lava, 6);
+  s.box(0, 24, 4, 4, 4, (fc, x, y) => ((x + y) % 3 ? [255, 170, 40] : [255, 230, 110]), 8);
+  const f = s.face(0, 0, 8, 4, 8, FRONT);
+  s.rect([f[0] + 1, f[1] + 2, 2, 1], [255, 230, 90], 0);
+  s.rect([f[0] + 5, f[1] + 2, 2, 1], [255, 230, 90], 0);
+  s.rect([f[0] + 1, f[1] + 3, 2, 1], [230, 60, 20], 0);
+  s.rect([f[0] + 5, f[1] + 3, 2, 1], [230, 60, 20], 0);
+  return s;
+}
+
 // The player character: an original explorer in a few colour variants.
 export const PLAYER_COLORS = [
   { shirt: [60, 160, 80], pants: [96, 70, 44], hair: [200, 160, 80] },
@@ -797,7 +899,8 @@ export const ARMOR_MATERIAL_LIST = ['leather', 'iron', 'golden', 'diamond'];
 
 const MOB_PAINTERS = [paintPig, paintCow, paintSheep, paintChicken, paintZombie, paintCreeper, paintVillager,
   paintSkeleton, paintSpider, paintEnderman, paintSlime, () => paintWolf(), paintIronGolem, paintSquid, paintBat, paintRabbit,
-  () => paintWolf(true), paintGuardian, paintCod];
+  () => paintWolf(true), paintGuardian, paintCod,
+  paintZombifiedPiglin, () => paintGhast(false), () => paintGhast(true), paintMagmaCube];
 export const PLAYER_SKIN_BASE = MOB_PAINTERS.length;
 export const ARMOR_SKIN_BASE = PLAYER_SKIN_BASE + PLAYER_COLORS.length;
 

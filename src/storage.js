@@ -151,10 +151,13 @@ export class Storage {
   loadWorld(id) {
     const data = this._get(`world:${id}`, null);
     if (!data) return null;
-    return { ...data, edits: decodeEdits(data.edits), blockEntities: decodeBlockEntities(data.blockEntities) };
+    return {
+      ...data, edits: decodeEdits(data.edits), blockEntities: decodeBlockEntities(data.blockEntities),
+      netherEdits: decodeEdits(data.netherEdits), netherBlockEntities: decodeBlockEntities(data.netherBlockEntities),
+    };
   }
 
-  saveWorld(meta, { player, inventory, ticks, edits, blockEntities }) {
+  saveWorld(meta, { player, inventory, ticks, edits, blockEntities, netherEdits, netherBlockEntities, dimension }) {
     meta.lastPlayed = Date.now();
     const worlds = this.listWorlds().filter((w) => w.id !== meta.id);
     worlds.push(meta);
@@ -166,6 +169,9 @@ export class Storage {
       ticks,
       edits: encodeEdits(edits),
       blockEntities: encodeBlockEntities(blockEntities),
+      netherEdits: encodeEdits(netherEdits || new Map()),
+      netherBlockEntities: encodeBlockEntities(netherBlockEntities || new Map()),
+      dimension: dimension || 'overworld',
     });
   }
 

@@ -16,8 +16,9 @@ export const BIOME = {
   DESERT: 4,
   SNOWY: 5,
   MOUNTAINS: 6,
+  NETHER: 7,
 };
-export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Desert', 'Snowy Tundra', 'Mountains'];
+export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Desert', 'Snowy Tundra', 'Mountains', 'Nether Wastes'];
 
 const MAX_TERRAIN = CHUNK_HEIGHT - 14;
 const LAVA_LEVEL = 10;

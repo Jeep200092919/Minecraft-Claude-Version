@@ -1102,6 +1102,9 @@ Object.assign(GENERATORS, {
   item_rabbit_spawn_egg: (t, r) => eggSprite(t, r, [160, 120, 90], [100, 70, 50]),
   item_guardian_spawn_egg: (t, r) => eggSprite(t, r, [90, 150, 136], [236, 124, 50]),
   item_cod_spawn_egg: (t, r) => eggSprite(t, r, [190, 160, 110], [150, 120, 80]),
+  item_zombified_piglin_spawn_egg: (t, r) => eggSprite(t, r, [234, 150, 150], [80, 110, 50]),
+  item_ghast_spawn_egg: (t, r) => eggSprite(t, r, [246, 246, 246], [180, 180, 180]),
+  item_magma_cube_spawn_egg: (t, r) => eggSprite(t, r, [60, 20, 10], [250, 200, 20]),
   item_raw_rabbit: (t, r) => meatSprite(t, r, [230, 170, 160], [250, 220, 214], false),
   item_cooked_rabbit: (t, r) => meatSprite(t, r, [190, 120, 70], [220, 170, 110], true),
 });
